@@ -1,0 +1,53 @@
+use anyhow::{Context, Result};
+use clap::Parser;
+use std::path::PathBuf;
+use std::process::Command;
+
+#[derive(Parser)]
+#[command(name = "arbor", version, about = "Git worktree manager with embedded terminal")]
+struct Cli {
+    /// Path to git repository (defaults to current directory)
+    #[arg(long)]
+    repo: Option<PathBuf>,
+
+    /// Worktree branch to select on startup
+    #[arg(long)]
+    worktree: Option<String>,
+
+    /// Key to toggle focus between sidebar and terminal (default: ctrl-a)
+    #[arg(long, default_value = "ctrl-a")]
+    toggle_key: String,
+}
+
+fn find_repo_root(start: &std::path::Path) -> Result<PathBuf> {
+    let repo = git2::Repository::discover(start)
+        .context("Not inside a git repository")?;
+    let workdir = repo.workdir()
+        .or_else(|| repo.path().parent())
+        .context("Cannot determine repository root")?;
+    Ok(workdir.to_path_buf())
+}
+
+fn check_zellij() -> Result<()> {
+    Command::new("zellij")
+        .arg("--version")
+        .output()
+        .context("zellij is not installed or not on PATH. Install it: cargo install zellij")?;
+    Ok(())
+}
+
+fn main() -> Result<()> {
+    let cli = Cli::parse();
+
+    let repo_path = match &cli.repo {
+        Some(p) => p.clone(),
+        None => std::env::current_dir()?,
+    };
+    let repo_root = find_repo_root(&repo_path)?;
+    check_zellij()?;
+
+    println!("arbor: repo at {}", repo_root.display());
+    println!("arbor: zellij found");
+    // App launch will be wired in Task 5
+    Ok(())
+}
