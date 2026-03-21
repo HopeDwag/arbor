@@ -46,8 +46,20 @@ fn main() -> Result<()> {
     let repo_root = find_repo_root(&repo_path)?;
     check_zellij()?;
 
+    let mut app = arbor::app::App::new(&repo_root)?;
+
+    if let Some(ref wt_name) = cli.worktree {
+        if let Some(idx) = app.sidebar_state.worktrees.iter()
+            .position(|w| w.branch == *wt_name || w.name == *wt_name)
+        {
+            app.sidebar_state.selected = idx;
+        } else {
+            eprintln!("arbor: worktree '{}' not found, starting with main", wt_name);
+        }
+    }
+
     let mut terminal = ratatui::init();
-    let result = arbor::app::App::new(&repo_root)?.run(&mut terminal);
+    let result = app.run(&mut terminal);
     ratatui::restore();
     result
 }
