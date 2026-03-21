@@ -46,8 +46,8 @@ fn main() -> Result<()> {
     let repo_root = find_repo_root(&repo_path)?;
     check_zellij()?;
 
-    println!("arbor: repo at {}", repo_root.display());
-    println!("arbor: zellij found");
-    // App launch will be wired in Task 5
-    Ok(())
+    let mut terminal = ratatui::init();
+    let result = arbor::app::App::new(&repo_root)?.run(&mut terminal);
+    ratatui::restore();
+    result
 }
