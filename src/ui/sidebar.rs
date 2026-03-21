@@ -4,6 +4,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, List, ListItem, ListState, StatefulWidget, Widget};
 
+use crate::app::Dialog;
 use crate::worktree::format_age;
 use crate::worktree::WorktreeInfo;
 
@@ -15,6 +16,7 @@ pub struct SidebarState {
 
 pub fn render_sidebar(
     state: &SidebarState,
+    dialog: &Dialog,
     area: Rect,
     buf: &mut Buffer,
     focused: bool,
@@ -90,5 +92,49 @@ pub fn render_sidebar(
         let hints = " n d ? help ";
         let hints_span = Span::styled(hints, Style::default().fg(Color::DarkGray));
         buf.set_line(area.x + 1, footer_y, &Line::from(hints_span), area.width - 2);
+    }
+
+    // Render dialog overlay at bottom of sidebar
+    match dialog {
+        Dialog::CreateInput(input) => {
+            let dialog_area = Rect {
+                x: area.x + 1,
+                y: area.bottom().saturating_sub(3),
+                width: area.width.saturating_sub(2),
+                height: 2,
+            };
+            for y in dialog_area.y..dialog_area.bottom() {
+                for x in dialog_area.x..dialog_area.right() {
+                    buf[(x, y)].set_char(' ').set_style(Style::default().bg(Color::DarkGray));
+                }
+            }
+            let prompt = Line::from(vec![
+                Span::styled(" Branch: ", Style::default().fg(Color::Cyan).bg(Color::DarkGray)),
+                Span::styled(
+                    format!("{}_", input),
+                    Style::default().fg(Color::White).bg(Color::DarkGray),
+                ),
+            ]);
+            buf.set_line(dialog_area.x, dialog_area.y, &prompt, dialog_area.width);
+        }
+        Dialog::DeleteConfirm(_idx, name) => {
+            let dialog_area = Rect {
+                x: area.x + 1,
+                y: area.bottom().saturating_sub(3),
+                width: area.width.saturating_sub(2),
+                height: 2,
+            };
+            for y in dialog_area.y..dialog_area.bottom() {
+                for x in dialog_area.x..dialog_area.right() {
+                    buf[(x, y)].set_char(' ').set_style(Style::default().bg(Color::Red));
+                }
+            }
+            let prompt = Line::from(Span::styled(
+                format!(" Delete {}? (y/n)", name),
+                Style::default().fg(Color::White).bg(Color::Red),
+            ));
+            buf.set_line(dialog_area.x, dialog_area.y, &prompt, dialog_area.width);
+        }
+        Dialog::None => {}
     }
 }

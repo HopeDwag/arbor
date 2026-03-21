@@ -13,12 +13,20 @@ use crate::ui::TerminalWidget;
 use crate::worktree::WorktreeManager;
 use crate::zellij::ZellijManager;
 
+#[derive(Debug)]
+pub enum Dialog {
+    None,
+    CreateInput(String),           // branch name being typed
+    DeleteConfirm(usize, String),  // index, worktree name
+}
+
 pub struct App {
     worktree_mgr: WorktreeManager,
     zellij_mgr: ZellijManager,
     pty_session: Option<PtySession>,
     pub focus: Focus,
     pub sidebar_state: SidebarState,
+    pub dialog: Dialog,
     sidebar_width: u16,
     should_quit: bool,
 }
@@ -41,6 +49,7 @@ impl App {
             pty_session: None,
             focus: Focus::Terminal,
             sidebar_state,
+            dialog: Dialog::None,
             sidebar_width: 30,
             should_quit: false,
         })
@@ -63,6 +72,7 @@ impl App {
 
                 ui::render_sidebar(
                     &self.sidebar_state,
+                    &self.dialog,
                     chunks[0],
                     frame.buffer_mut(),
                     self.focus == Focus::Sidebar,
@@ -76,6 +86,10 @@ impl App {
 
             if event::poll(Duration::from_millis(50))? {
                 if let Event::Key(key) = event::read()? {
+                    // Dialogs consume raw key events first
+                    if self.handle_dialog_key(key)? {
+                        continue;
+                    }
                     let action = keys::handle_key(key, &self.focus);
                     self.handle_action(action)?;
                 }
@@ -118,10 +132,17 @@ impl App {
                 }
             }
             Action::SidebarCreate => {
-                // TODO: inline input for branch name — Task 6
+                self.dialog = Dialog::CreateInput(String::new());
             }
             Action::SidebarDelete => {
-                // TODO: confirmation dialog — Task 6
+                let idx = self.sidebar_state.selected;
+                if idx < self.sidebar_state.worktrees.len() {
+                    let wt = &self.sidebar_state.worktrees[idx];
+                    if !wt.is_main {
+                        let name = wt.name.clone();
+                        self.dialog = Dialog::DeleteConfirm(idx, name);
+                    }
+                }
             }
             Action::SidebarResizeLeft => {
                 if self.sidebar_width > 20 {
@@ -145,6 +166,54 @@ impl App {
             _ => {}
         }
         Ok(())
+    }
+
+    /// Handle raw key events for active dialogs. Returns true if the dialog consumed the event.
+    fn handle_dialog_key(&mut self, key: crossterm::event::KeyEvent) -> Result<bool> {
+        use crossterm::event::KeyCode;
+
+        match &mut self.dialog {
+            Dialog::CreateInput(ref mut input) => {
+                match key.code {
+                    KeyCode::Enter => {
+                        if !input.is_empty() {
+                            let branch = input.clone();
+                            self.worktree_mgr.create(&branch)?;
+                            self.sidebar_state.worktrees = self.worktree_mgr.list()?;
+                            self.sidebar_state.selected = self.sidebar_state.worktrees.len() - 1;
+                            self.dialog = Dialog::None;
+                            let size = crossterm::terminal::size()?;
+                            self.launch_zellij_for_selected(size.1, size.0)?;
+                            self.focus = Focus::Terminal;
+                        }
+                    }
+                    KeyCode::Esc => self.dialog = Dialog::None,
+                    KeyCode::Char(c) => input.push(c),
+                    KeyCode::Backspace => { input.pop(); }
+                    _ => {}
+                }
+                Ok(true)
+            }
+            Dialog::DeleteConfirm(_idx, ref name) => {
+                let name = name.clone();
+                match key.code {
+                    KeyCode::Char('y') => {
+                        let session_name = crate::zellij::sanitize_session_name(&name);
+                        let _ = self.zellij_mgr.kill_session(&session_name);
+                        self.worktree_mgr.delete(&name, false)?;
+                        self.sidebar_state.worktrees = self.worktree_mgr.list()?;
+                        self.sidebar_state.selected = 0;
+                        self.dialog = Dialog::None;
+                        let size = crossterm::terminal::size()?;
+                        self.launch_zellij_for_selected(size.1, size.0)?;
+                    }
+                    KeyCode::Char('n') | KeyCode::Esc => self.dialog = Dialog::None,
+                    _ => {}
+                }
+                Ok(true)
+            }
+            Dialog::None => Ok(false),
+        }
     }
 
     fn launch_zellij_for_selected(&mut self, rows: u16, cols: u16) -> Result<()> {
