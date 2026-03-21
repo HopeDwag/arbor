@@ -1,6 +1,8 @@
 use anyhow::Result;
 use crossterm::event::{self, Event};
 use ratatui::layout::{Constraint, Direction, Layout};
+use ratatui::style::{Color, Style};
+use ratatui::text::{Line, Span};
 use ratatui::DefaultTerminal;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -36,6 +38,13 @@ impl App {
         let worktree_mgr = WorktreeManager::open(repo_path)?;
         let zellij_mgr = ZellijManager::new()?;
         let worktrees = worktree_mgr.list()?;
+
+        // Clean up orphaned sessions
+        let branch_names: Vec<&str> = worktrees.iter().map(|w| w.branch.as_str()).collect();
+        let cleaned = zellij_mgr.cleanup_orphaned(&branch_names)?;
+        for session in &cleaned {
+            eprintln!("arbor: cleaned up orphaned session: {}", session);
+        }
 
         let sidebar_state = SidebarState {
             selected: 0,
@@ -78,20 +87,52 @@ impl App {
                     self.focus == Focus::Sidebar,
                 );
 
+                // Split right panel into header + terminal
+                let right_chunks = Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints([Constraint::Length(1), Constraint::Min(1)])
+                    .split(chunks[1]);
+
+                // Render header
+                if self.sidebar_state.selected < self.sidebar_state.worktrees.len() {
+                    let wt = &self.sidebar_state.worktrees[self.sidebar_state.selected];
+                    let header = Line::from(vec![
+                        Span::styled(
+                            format!(" {} ", wt.path.display()),
+                            Style::default().fg(Color::DarkGray),
+                        ),
+                        Span::styled(
+                            format!("⎇ {} ", wt.branch),
+                            Style::default().fg(Color::Cyan),
+                        ),
+                    ]);
+                    frame.render_widget(header, right_chunks[0]);
+                }
+
+                // Render terminal in remaining space
                 if let Some(ref pty) = self.pty_session {
                     let term_widget = TerminalWidget::new(pty.screen());
-                    frame.render_widget(term_widget, chunks[1]);
+                    frame.render_widget(term_widget, right_chunks[1]);
                 }
             })?;
 
             if event::poll(Duration::from_millis(50))? {
-                if let Event::Key(key) = event::read()? {
-                    // Dialogs consume raw key events first
-                    if self.handle_dialog_key(key)? {
-                        continue;
+                match event::read()? {
+                    Event::Key(key) => {
+                        // Dialogs consume raw key events first
+                        if self.handle_dialog_key(key)? {
+                            continue;
+                        }
+                        let action = keys::handle_key(key, &self.focus);
+                        self.handle_action(action)?;
                     }
-                    let action = keys::handle_key(key, &self.focus);
-                    self.handle_action(action)?;
+                    Event::Resize(cols, rows) => {
+                        if let Some(ref pty) = self.pty_session {
+                            let terminal_cols = cols.saturating_sub(self.sidebar_width);
+                            pty.resize(rows, terminal_cols)?;
+                        }
+                    }
+                    _ => {}
                 }
             }
         }
