@@ -49,3 +49,26 @@ fn test_cannot_delete_main() {
     let result = manager.delete("main", false);
     assert!(result.is_err());
 }
+
+#[test]
+fn test_full_crud_cycle() {
+    let dir = init_test_repo();
+    let manager = arbor::worktree::WorktreeManager::open(dir.path()).unwrap();
+
+    // List — starts with just main
+    let wts = manager.list().unwrap();
+    assert_eq!(wts.len(), 1);
+    assert!(wts[0].is_main);
+
+    // Create
+    let path = manager.create("feature-a").unwrap();
+    assert!(path.exists());
+
+    let wts = manager.list().unwrap();
+    assert_eq!(wts.len(), 2);
+
+    // Delete
+    manager.delete("feature-a", false).unwrap();
+    let wts = manager.list().unwrap();
+    assert_eq!(wts.len(), 1);
+}
