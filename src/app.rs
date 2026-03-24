@@ -40,7 +40,7 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(repo_path: &PathBuf) -> Result<Self> {
+    pub fn new(repo_path: &std::path::Path) -> Result<Self> {
         let worktree_mgr = WorktreeManager::open(repo_path)?;
         let worktrees = worktree_mgr.list()?;
 
@@ -208,7 +208,7 @@ impl App {
         Line::from(spans)
     }
 
-    fn handle_action(&mut self, action: Action) -> Result<()> {
+    pub fn handle_action(&mut self, action: Action) -> Result<()> {
         match action {
             Action::ToggleFocus => {
                 self.focus = match self.focus {
@@ -374,7 +374,7 @@ impl App {
         }
     }
 
-    fn handle_mouse(&mut self, mouse: crossterm::event::MouseEvent) -> Result<()> {
+    pub fn handle_mouse(&mut self, mouse: crossterm::event::MouseEvent) -> Result<()> {
         let border_col = self.sidebar_width.saturating_sub(1);
         let near_border = mouse.column >= border_col.saturating_sub(1)
             && mouse.column <= border_col + 1;
@@ -386,6 +386,13 @@ impl App {
             MouseEventKind::Down(_) => {
                 if near_border {
                     self.dragging_sidebar = true;
+                } else if mouse.column < self.sidebar_width.saturating_sub(1) {
+                    if self.focus != Focus::Sidebar {
+                        self.sidebar_state.worktrees = self.worktree_mgr.list()?;
+                        self.focus = Focus::Sidebar;
+                    }
+                } else if mouse.column >= self.sidebar_width {
+                    self.focus = Focus::Terminal;
                 }
             }
             MouseEventKind::Drag(_) if self.dragging_sidebar => {
