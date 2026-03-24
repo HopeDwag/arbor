@@ -1,6 +1,6 @@
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Style};
+use ratatui::style::{Color, Modifier, Style};
 use vt100_ctt::Parser;
 use std::sync::{Arc, Mutex};
 
@@ -23,25 +23,54 @@ pub fn render_terminal(
         for col in 0..cols {
             let buf_x = area.x + col;
             if let Some(cell) = screen.cell(row, col) {
-                let contents = cell.contents();
+                // Skip wide character continuation cells
+                if cell.is_wide_continuation() {
+                    continue;
+                }
+
                 let fg = convert_vt100_color(cell.fgcolor());
                 let bg = convert_vt100_color(cell.bgcolor());
-                let style = if dimmed {
-                    Style::default().fg(dim_color(fg)).bg(bg)
-                } else {
-                    Style::default().fg(fg).bg(bg)
-                };
 
-                if contents.is_empty() {
-                    buf[(buf_x, buf_y)].set_char(' ').set_style(style);
+                let mut style = Style::reset().fg(fg).bg(bg);
+
+                // Map all text attributes
+                if cell.bold() {
+                    style = style.add_modifier(Modifier::BOLD);
+                }
+                if cell.italic() {
+                    style = style.add_modifier(Modifier::ITALIC);
+                }
+                if cell.underline() {
+                    style = style.add_modifier(Modifier::UNDERLINED);
+                }
+                if cell.inverse() {
+                    style = style.add_modifier(Modifier::REVERSED);
+                }
+                if cell.dim() {
+                    style = style.add_modifier(Modifier::DIM);
+                }
+
+                if dimmed {
+                    style = dim_style(style);
+                }
+
+                if cell.has_contents() {
+                    buf[(buf_x, buf_y)].set_symbol(cell.contents()).set_style(style);
                 } else {
-                    buf[(buf_x, buf_y)].set_symbol(contents).set_style(style);
+                    buf[(buf_x, buf_y)].set_char(' ').set_style(style);
                 }
             }
         }
     }
 
     screen.cursor_position()
+}
+
+fn dim_style(style: Style) -> Style {
+    let fg = style.fg.map(dim_color).unwrap_or(Color::DarkGray);
+    let bg = style.bg.unwrap_or(Color::Reset);
+    // Strip modifiers when dimmed for a muted look
+    Style::reset().fg(fg).bg(bg).add_modifier(Modifier::DIM)
 }
 
 fn dim_color(color: Color) -> Color {
