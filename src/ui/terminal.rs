@@ -7,11 +7,17 @@ use std::sync::{Arc, Mutex};
 
 pub struct TerminalWidget {
     parser: Arc<Mutex<Parser>>,
+    dimmed: bool,
 }
 
 impl TerminalWidget {
     pub fn new(parser: Arc<Mutex<Parser>>) -> Self {
-        Self { parser }
+        Self { parser, dimmed: false }
+    }
+
+    pub fn dimmed(mut self, dimmed: bool) -> Self {
+        self.dimmed = dimmed;
+        self
     }
 }
 
@@ -27,7 +33,11 @@ impl Widget for TerminalWidget {
                     let contents = cell.contents();
                     let fg = convert_vt100_color(cell.fgcolor());
                     let bg = convert_vt100_color(cell.bgcolor());
-                    let style = Style::default().fg(fg).bg(bg);
+                    let style = if self.dimmed {
+                        Style::default().fg(dim_color(fg)).bg(bg)
+                    } else {
+                        Style::default().fg(fg).bg(bg)
+                    };
 
                     let buf_x = area.x + col;
                     let buf_y = area.y + row;
@@ -43,6 +53,16 @@ impl Widget for TerminalWidget {
                 }
             }
         }
+    }
+}
+
+fn dim_color(color: Color) -> Color {
+    match color {
+        Color::Reset => Color::DarkGray,
+        Color::Rgb(r, g, b) => Color::Rgb(r / 2, g / 2, b / 2),
+        Color::White => Color::Gray,
+        Color::Gray => Color::DarkGray,
+        _ => color,
     }
 }
 

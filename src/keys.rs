@@ -9,21 +9,32 @@ pub enum Focus {
 #[derive(Debug)]
 pub enum Action {
     ToggleFocus,
+    FocusSidebar,
+    FocusTerminal,
     SidebarUp,
     SidebarDown,
     SidebarSelect,
     SidebarCreate,
-    SidebarDelete,
+    SidebarArchive,
     SidebarHelp,
     SidebarResizeLeft,
     SidebarResizeRight,
-    FocusTerminal,
     TerminalInput(KeyEvent),
     Quit,
     None,
 }
 
 pub fn handle_key(key: KeyEvent, focus: &Focus) -> Action {
+    // Shift+Arrow works from either pane
+    if key.modifiers.contains(KeyModifiers::SHIFT) {
+        match key.code {
+            KeyCode::Left => return Action::FocusSidebar,
+            KeyCode::Right => return Action::FocusTerminal,
+            _ => {}
+        }
+    }
+
+    // Ctrl-a toggle still works as a fallback
     if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('a') {
         return Action::ToggleFocus;
     }
@@ -34,7 +45,7 @@ pub fn handle_key(key: KeyEvent, focus: &Focus) -> Action {
             KeyCode::Down | KeyCode::Char('j') => Action::SidebarDown,
             KeyCode::Enter => Action::SidebarSelect,
             KeyCode::Char('n') => Action::SidebarCreate,
-            KeyCode::Char('d') => Action::SidebarDelete,
+            KeyCode::Char('a') => Action::SidebarArchive,
             KeyCode::Char('?') => Action::SidebarHelp,
             KeyCode::Char('<') => Action::SidebarResizeLeft,
             KeyCode::Char('>') => Action::SidebarResizeRight,

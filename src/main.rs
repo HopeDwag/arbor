@@ -1,7 +1,6 @@
 use anyhow::{Context, Result};
 use clap::Parser;
 use std::path::PathBuf;
-use std::process::Command;
 
 #[derive(Parser)]
 #[command(name = "arbor", version, about = "Git worktree manager with embedded terminal")]
@@ -28,14 +27,6 @@ fn find_repo_root(start: &std::path::Path) -> Result<PathBuf> {
     Ok(workdir.to_path_buf())
 }
 
-fn check_zellij() -> Result<()> {
-    Command::new("zellij")
-        .arg("--version")
-        .output()
-        .context("zellij is not installed or not on PATH. Install it: cargo install zellij")?;
-    Ok(())
-}
-
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
@@ -44,7 +35,6 @@ fn main() -> Result<()> {
         None => std::env::current_dir()?,
     };
     let repo_root = find_repo_root(&repo_path)?;
-    check_zellij()?;
 
     let mut app = arbor::app::App::new(&repo_root)?;
 
@@ -58,8 +48,10 @@ fn main() -> Result<()> {
         }
     }
 
+    crossterm::execute!(std::io::stdout(), crossterm::event::EnableMouseCapture)?;
     let mut terminal = ratatui::init();
     let result = app.run(&mut terminal);
     ratatui::restore();
+    crossterm::execute!(std::io::stdout(), crossterm::event::DisableMouseCapture)?;
     result
 }

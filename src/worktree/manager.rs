@@ -70,6 +70,19 @@ impl WorktreeManager {
             });
         }
 
+        // Sort: main first, then by most recent commit
+        result.sort_by(|a, b| {
+            match (a.is_main, b.is_main) {
+                (true, false) => std::cmp::Ordering::Less,
+                (false, true) => std::cmp::Ordering::Greater,
+                _ => {
+                    let age_a = a.status.as_ref().map(|s| s.last_commit_age_secs).unwrap_or(u64::MAX);
+                    let age_b = b.status.as_ref().map(|s| s.last_commit_age_secs).unwrap_or(u64::MAX);
+                    age_a.cmp(&age_b)
+                }
+            }
+        });
+
         Ok(result)
     }
 
@@ -131,6 +144,22 @@ impl WorktreeManager {
         worktree.prune(Some(&mut prune_opts))?;
 
         Ok(())
+    }
+
+    /// List local branches that don't have an active worktree (archived).
+    pub fn archived_branches(&self) -> Result<Vec<String>> {
+        let active: Vec<String> = self.list()?.into_iter().map(|w| w.branch).collect();
+        let mut archived = Vec::new();
+        let branches = self.repo.branches(Some(git2::BranchType::Local))?;
+        for branch in branches {
+            let (branch, _) = branch?;
+            if let Some(name) = branch.name()? {
+                if !active.contains(&name.to_string()) {
+                    archived.push(name.to_string());
+                }
+            }
+        }
+        Ok(archived)
     }
 
     fn worktree_base_dir(&self) -> PathBuf {

@@ -20,6 +20,7 @@ pub fn render_sidebar(
     area: Rect,
     buf: &mut Buffer,
     focused: bool,
+    drag_handle_active: bool,
 ) {
     let border_style = if focused {
         Style::default().fg(Color::Cyan)
@@ -34,6 +35,23 @@ pub fn render_sidebar(
 
     let inner = block.inner(area);
     block.render(area, buf);
+
+    // Highlight the right border when hovering/dragging to show it's resizable
+    if drag_handle_active {
+        let right_col = area.right().saturating_sub(1);
+        let handle_style = Style::default().fg(Color::Yellow);
+        for y in area.y..area.bottom() {
+            let cell = &mut buf[(right_col, y)];
+            cell.set_style(handle_style);
+        }
+        // Draw a grip indicator in the middle of the border
+        let mid_y = area.y + area.height / 2;
+        if mid_y > area.y && mid_y < area.bottom().saturating_sub(1) {
+            buf[(right_col, mid_y.saturating_sub(1))].set_symbol("╟");
+            buf[(right_col, mid_y)].set_symbol("↔");
+            buf[(right_col, mid_y + 1)].set_symbol("╢");
+        }
+    }
 
     let mut items: Vec<ListItem> = Vec::new();
 
@@ -72,10 +90,15 @@ pub fn render_sidebar(
         items.push(ListItem::new(vec![name_line, status_line]));
     }
 
-    // [+] new button
+    // [+] new worktree button
+    let plus_style = if state.selected == state.worktrees.len() {
+        Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(Color::DarkGray)
+    };
     items.push(ListItem::new(Line::from(Span::styled(
-        "  [+] new",
-        Style::default().fg(Color::DarkGray),
+        "  [+] new worktree",
+        plus_style,
     ))));
 
     let mut list_state = ListState::default();
@@ -86,54 +109,106 @@ pub fn render_sidebar(
 
     StatefulWidget::render(list, inner, buf, &mut list_state);
 
-    // Footer with keybinding hints
-    let footer_y = area.bottom().saturating_sub(1);
-    if footer_y > area.y {
-        let hints = " n d ? help ";
-        let hints_span = Span::styled(hints, Style::default().fg(Color::DarkGray));
-        buf.set_line(area.x + 1, footer_y, &Line::from(hints_span), area.width - 2);
-    }
-
     // Render dialog overlay at bottom of sidebar
     match dialog {
-        Dialog::CreateInput(input) => {
+        Dialog::CreateInput { input, archived, selected_archived } => {
+            let has_archived = !archived.is_empty();
+            let dialog_height: u16 = if has_archived { 5 } else { 3 };
             let dialog_area = Rect {
                 x: area.x + 1,
-                y: area.bottom().saturating_sub(3),
+                y: area.bottom().saturating_sub(dialog_height + 1),
                 width: area.width.saturating_sub(2),
-                height: 2,
+                height: dialog_height,
             };
             for y in dialog_area.y..dialog_area.bottom() {
                 for x in dialog_area.x..dialog_area.right() {
                     buf[(x, y)].set_char(' ').set_style(Style::default().bg(Color::DarkGray));
                 }
             }
+            let mut row = dialog_area.y;
+
+            let title_line = Line::from(Span::styled(
+                " New worktree",
+                Style::default().fg(Color::Cyan).bg(Color::DarkGray).add_modifier(Modifier::BOLD),
+            ));
+            buf.set_line(dialog_area.x, row, &title_line, dialog_area.width);
+            row += 1;
+
+            let input_style = if selected_archived.is_some() {
+                Style::default().fg(Color::Yellow).bg(Color::DarkGray)
+            } else {
+                Style::default().fg(Color::Cyan).bg(Color::DarkGray)
+            };
             let prompt = Line::from(vec![
-                Span::styled(" Branch: ", Style::default().fg(Color::Cyan).bg(Color::DarkGray)),
-                Span::styled(
-                    format!("{}_", input),
-                    Style::default().fg(Color::White).bg(Color::DarkGray),
-                ),
+                Span::styled(" Branch: ", Style::default().fg(Color::White).bg(Color::DarkGray)),
+                Span::styled(format!("{}_", input), input_style),
             ]);
-            buf.set_line(dialog_area.x, dialog_area.y, &prompt, dialog_area.width);
+            buf.set_line(dialog_area.x, row, &prompt, dialog_area.width);
+            row += 1;
+
+            if has_archived {
+                let archived_label = format!(
+                    " Tab: restore ({} archived)",
+                    archived.len()
+                );
+                let archived_line = Line::from(Span::styled(
+                    archived_label,
+                    Style::default().fg(Color::Yellow).bg(Color::DarkGray),
+                ));
+                buf.set_line(dialog_area.x, row, &archived_line, dialog_area.width);
+                row += 1;
+
+                // Show current archived selection if cycling
+                if let Some(idx) = selected_archived {
+                    let preview = format!(" → {}", archived[*idx]);
+                    let preview_line = Line::from(Span::styled(
+                        preview,
+                        Style::default().fg(Color::Yellow).bg(Color::DarkGray).add_modifier(Modifier::BOLD),
+                    ));
+                    buf.set_line(dialog_area.x, row, &preview_line, dialog_area.width);
+                    row += 1;
+                } else {
+                    row += 1;
+                }
+            }
+
+            let _ = row; // suppress unused warning
+            let hint_y = dialog_area.bottom().saturating_sub(1);
+            let hint = Line::from(Span::styled(
+                " Enter confirm · Esc cancel",
+                Style::default().fg(Color::Gray).bg(Color::DarkGray),
+            ));
+            buf.set_line(dialog_area.x, hint_y, &hint, dialog_area.width);
         }
-        Dialog::DeleteConfirm(_idx, name) => {
+        Dialog::ArchiveConfirm(_idx, name) => {
             let dialog_area = Rect {
                 x: area.x + 1,
-                y: area.bottom().saturating_sub(3),
+                y: area.bottom().saturating_sub(4),
                 width: area.width.saturating_sub(2),
-                height: 2,
+                height: 3,
             };
             for y in dialog_area.y..dialog_area.bottom() {
                 for x in dialog_area.x..dialog_area.right() {
-                    buf[(x, y)].set_char(' ').set_style(Style::default().bg(Color::Red));
+                    buf[(x, y)].set_char(' ').set_style(Style::default().bg(Color::DarkGray));
                 }
             }
-            let prompt = Line::from(Span::styled(
-                format!(" Delete {}? (y/n)", name),
-                Style::default().fg(Color::White).bg(Color::Red),
+            let title = Line::from(Span::styled(
+                " Archive worktree",
+                Style::default().fg(Color::Yellow).bg(Color::DarkGray).add_modifier(Modifier::BOLD),
             ));
-            buf.set_line(dialog_area.x, dialog_area.y, &prompt, dialog_area.width);
+            buf.set_line(dialog_area.x, dialog_area.y, &title, dialog_area.width);
+
+            let prompt = Line::from(Span::styled(
+                format!(" Remove {}? (y/n)", name),
+                Style::default().fg(Color::White).bg(Color::DarkGray),
+            ));
+            buf.set_line(dialog_area.x, dialog_area.y + 1, &prompt, dialog_area.width);
+
+            let hint = Line::from(Span::styled(
+                " Branch kept · restore with n",
+                Style::default().fg(Color::Gray).bg(Color::DarkGray),
+            ));
+            buf.set_line(dialog_area.x, dialog_area.y + 2, &hint, dialog_area.width);
         }
         Dialog::None => {}
     }

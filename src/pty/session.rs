@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 use std::io::{Read, Write};
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 pub struct PtySession {
@@ -11,7 +12,7 @@ pub struct PtySession {
 }
 
 impl PtySession {
-    pub fn spawn(cmd: &str, args: &[String], rows: u16, cols: u16) -> Result<Self> {
+    pub fn spawn(cmd: &str, args: &[String], rows: u16, cols: u16, cwd: &Path) -> Result<Self> {
         let pty_system = native_pty_system();
         let pair = pty_system
             .openpty(PtySize {
@@ -26,6 +27,7 @@ impl PtySession {
         for arg in args {
             command.arg(arg);
         }
+        command.cwd(cwd);
 
         let child = pair
             .slave
