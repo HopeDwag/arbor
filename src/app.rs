@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use crate::keys::{self, Action, Focus};
+use crate::persistence::{ArborConfig, WorkflowStatus};
 use crate::pty::PtySession;
 use crate::ui;
 use crate::ui::ControlPanelState;
@@ -37,12 +38,25 @@ pub struct App {
     dragging_sidebar: bool,
     spinner_frame: u8,
     should_quit: bool,
+    config: ArborConfig,
+    repo_root: PathBuf,
 }
 
 impl App {
     pub fn new(repo_path: &std::path::Path) -> Result<Self> {
         let worktree_mgr = WorktreeManager::open(repo_path)?;
-        let worktrees = worktree_mgr.list()?;
+        let repo_root = worktree_mgr.repo_root().to_path_buf();
+        let config = ArborConfig::load(&repo_root);
+
+        let mut worktrees = worktree_mgr.list()?;
+        for wt in &mut worktrees {
+            if wt.is_main {
+                wt.workflow_status = WorkflowStatus::InProgress;
+            } else if let Some(wt_config) = config.worktrees.get(&wt.name) {
+                wt.workflow_status = wt_config.status;
+                wt.short_name = wt_config.short_name.clone();
+            }
+        }
 
         let sidebar_state = ControlPanelState {
             selected: 0,
@@ -61,6 +75,8 @@ impl App {
             dragging_sidebar: false,
             spinner_frame: 0,
             should_quit: false,
+            config,
+            repo_root,
         })
     }
 
@@ -269,7 +285,20 @@ impl App {
                     }
                 }
             }
-            Action::StatusCycle => { /* implemented in Task 7 */ }
+            Action::StatusCycle => {
+                let idx = self.sidebar_state.selected;
+                if idx < self.sidebar_state.worktrees.len() {
+                    let wt = &mut self.sidebar_state.worktrees[idx];
+                    if !wt.is_main {
+                        wt.workflow_status = wt.workflow_status.next();
+                        let entry = self.config.worktrees
+                            .entry(wt.name.clone())
+                            .or_default();
+                        entry.status = wt.workflow_status;
+                        let _ = self.config.save(&self.repo_root);
+                    }
+                }
+            }
             Action::TerminalInput(key) => {
                 if let Some(ref active) = self.active_worktree {
                     if let Some(ref mut pty) = self.pty_sessions.get_mut(active) {
