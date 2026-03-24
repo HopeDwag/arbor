@@ -173,9 +173,22 @@ impl App {
                 // Render terminal in remaining space (dimmed when sidebar focused)
                 if let Some(ref key) = self.active_worktree {
                     if let Some(pty) = self.pty_sessions.get(key) {
-                        let term_widget = TerminalWidget::new(pty.screen())
+                        let screen_arc = pty.screen();
+                        let term_widget = TerminalWidget::new(screen_arc.clone())
                             .dimmed(self.focus == Focus::Sidebar);
                         frame.render_widget(term_widget, right_chunks[1]);
+
+                        // Show cursor when terminal is focused
+                        if self.focus == Focus::Terminal {
+                            let parser = screen_arc.lock().unwrap();
+                            let screen = parser.screen();
+                            let (cursor_row, cursor_col) = screen.cursor_position();
+                            let cursor_x = right_chunks[1].x + cursor_col;
+                            let cursor_y = right_chunks[1].y + cursor_row;
+                            if cursor_x < right_chunks[1].right() && cursor_y < right_chunks[1].bottom() {
+                                frame.set_cursor_position((cursor_x, cursor_y));
+                            }
+                        }
                     }
                 }
 
