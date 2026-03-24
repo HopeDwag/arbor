@@ -64,14 +64,3 @@ fn test_click_sidebar_then_terminal() {
     assert_eq!(app.focus, Focus::Terminal);
 }
 
-#[test]
-fn test_click_near_border_does_not_change_focus() {
-    let dir = init_test_repo();
-    let mut app = arbor::app::App::new(dir.path()).unwrap();
-    assert_eq!(app.focus, Focus::Terminal);
-
-    // Click on the border (column 29 = sidebar_width 30 - 1)
-    app.handle_mouse(make_mouse_down(29, 5)).unwrap();
-    // Should start drag, not change focus
-    assert_eq!(app.focus, Focus::Terminal);
-}

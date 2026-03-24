@@ -16,11 +16,19 @@ use crate::ui::ControlPanelState;
 use crate::ui::TerminalWidget;
 use crate::worktree::WorktreeManager;
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum DialogField {
+    Branch,
+    Name,
+}
+
 #[derive(Debug)]
 pub enum Dialog {
     None,
     CreateInput {
         input: String,
+        short_name: String,
+        active_field: DialogField,
         archived: Vec<String>,     // branches that can be restored
         selected_archived: Option<usize>,
     },
@@ -35,7 +43,6 @@ pub struct App {
     pub sidebar_state: ControlPanelState,
     pub dialog: Dialog,
     sidebar_width: u16,
-    dragging_sidebar: bool,
     spinner_frame: u8,
     should_quit: bool,
     config: ArborConfig,
@@ -64,7 +71,7 @@ impl App {
             show_plus: true,
         };
 
-        Ok(Self {
+        let mut app = Self {
             worktree_mgr,
             pty_sessions: HashMap::new(),
             active_worktree: None,
@@ -72,12 +79,30 @@ impl App {
             sidebar_state,
             dialog: Dialog::None,
             sidebar_width: 30,
-            dragging_sidebar: false,
             spinner_frame: 0,
             should_quit: false,
             config,
             repo_root,
-        })
+        };
+        app.sidebar_width = app.calculate_panel_width();
+        Ok(app)
+    }
+
+    pub fn panel_width(&self) -> u16 {
+        self.sidebar_width
+    }
+
+    fn calculate_panel_width(&self) -> u16 {
+        let max_name_len = self.sidebar_state.worktrees.iter()
+            .map(|wt| {
+                let display = wt.short_name.as_deref().unwrap_or(&wt.branch);
+                display.len()
+            })
+            .max()
+            .unwrap_or(0);
+        // Padding: 2 (border) + 2 (indent) + 2 (icon + space) + 2 (right padding) = 8
+        let width = (max_name_len + 8) as u16;
+        width.clamp(20, 60)
     }
 
     pub fn run(&mut self, terminal: &mut DefaultTerminal) -> Result<()> {
@@ -271,6 +296,8 @@ impl App {
                 let archived = self.worktree_mgr.archived_branches().unwrap_or_default();
                 self.dialog = Dialog::CreateInput {
                     input: String::new(),
+                    short_name: String::new(),
+                    active_field: DialogField::Branch,
                     archived,
                     selected_archived: None,
                 };
@@ -316,11 +343,11 @@ impl App {
     }
 
     /// Handle raw key events for active dialogs. Returns true if the dialog consumed the event.
-    fn handle_dialog_key(&mut self, key: crossterm::event::KeyEvent) -> Result<bool> {
+    pub fn handle_dialog_key(&mut self, key: crossterm::event::KeyEvent) -> Result<bool> {
         use crossterm::event::KeyCode;
 
         match &mut self.dialog {
-            Dialog::CreateInput { ref mut input, ref archived, ref mut selected_archived } => {
+            Dialog::CreateInput { ref mut input, ref mut short_name, ref mut active_field, ref archived, ref mut selected_archived } => {
                 match key.code {
                     KeyCode::Enter => {
                         // Use selected archived branch or typed input
@@ -331,8 +358,15 @@ impl App {
                         } else {
                             return Ok(true);
                         };
+                        let sn = if short_name.is_empty() { None } else { Some(short_name.clone()) };
                         self.worktree_mgr.create(&branch)?;
                         self.sidebar_state.worktrees = self.worktree_mgr.list()?;
+                        // Persist short_name
+                        let entry = self.config.worktrees.entry(branch.clone()).or_default();
+                        if let Some(ref name) = sn {
+                            entry.short_name = Some(name.clone());
+                        }
+                        let _ = self.config.save(&self.repo_root);
                         // Select the newly created worktree
                         if let Some(idx) = self.sidebar_state.worktrees.iter()
                             .position(|w| w.branch == branch)
@@ -344,7 +378,9 @@ impl App {
                         self.ensure_pty_for_selected(size.1, size.0)?;
                         self.focus = Focus::Terminal;
                     }
-                    KeyCode::Tab if !archived.is_empty() => {
+                    KeyCode::Down => { *active_field = DialogField::Name; }
+                    KeyCode::Up => { *active_field = DialogField::Branch; }
+                    KeyCode::Tab if !archived.is_empty() && *active_field == DialogField::Branch => {
                         // Cycle through archived branches
                         *selected_archived = Some(match selected_archived {
                             Some(idx) => (*idx + 1) % archived.len(),
@@ -352,7 +388,7 @@ impl App {
                         });
                         *input = archived[selected_archived.unwrap()].clone();
                     }
-                    KeyCode::BackTab if !archived.is_empty() => {
+                    KeyCode::BackTab if !archived.is_empty() && *active_field == DialogField::Branch => {
                         // Cycle backwards through archived branches
                         *selected_archived = Some(match selected_archived {
                             Some(0) | None => archived.len() - 1,
@@ -363,11 +399,19 @@ impl App {
                     KeyCode::Esc => self.dialog = Dialog::None,
                     KeyCode::Char(c) => {
                         *selected_archived = None;
-                        input.push(c);
+                        match active_field {
+                            DialogField::Branch => input.push(c),
+                            DialogField::Name => {
+                                if short_name.len() < 20 { short_name.push(c); }
+                            }
+                        }
                     }
                     KeyCode::Backspace => {
                         *selected_archived = None;
-                        input.pop();
+                        match active_field {
+                            DialogField::Branch => { input.pop(); }
+                            DialogField::Name => { short_name.pop(); }
+                        }
                     }
                     _ => {}
                 }
@@ -402,42 +446,19 @@ impl App {
     }
 
     pub fn handle_mouse(&mut self, mouse: crossterm::event::MouseEvent) -> Result<()> {
-        let border_col = self.sidebar_width.saturating_sub(1);
-        let near_border = mouse.column >= border_col.saturating_sub(1)
-            && mouse.column <= border_col + 1;
-
         match mouse.kind {
             MouseEventKind::Moved => {}
             MouseEventKind::Down(_) => {
-                if near_border {
-                    self.dragging_sidebar = true;
-                } else if mouse.column < self.sidebar_width.saturating_sub(1) {
+                if mouse.column < self.sidebar_width {
                     if self.focus != Focus::Sidebar {
                         self.sidebar_state.worktrees = self.worktree_mgr.list()?;
                         self.focus = Focus::Sidebar;
                     }
-                } else if mouse.column >= self.sidebar_width {
+                } else {
                     self.focus = Focus::Terminal;
                 }
             }
-            MouseEventKind::Drag(_) if self.dragging_sidebar => {
-                let new_width = (mouse.column + 1).clamp(15, 80);
-                if new_width != self.sidebar_width {
-                    self.sidebar_width = new_width;
-                    // Resize active PTY to match new terminal area
-                    let size = crossterm::terminal::size()?;
-                    if let Some(ref key) = self.active_worktree {
-                        if let Some(pty) = self.pty_sessions.get(key) {
-                            let terminal_cols = size.0.saturating_sub(self.sidebar_width);
-                            let terminal_rows = size.1.saturating_sub(2);
-                            pty.resize(terminal_rows, terminal_cols)?;
-                        }
-                    }
-                }
-            }
-            MouseEventKind::Up(_) => {
-                self.dragging_sidebar = false;
-            }
+            MouseEventKind::Up(_) => {}
             _ => {}
         }
         Ok(())
