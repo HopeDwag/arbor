@@ -13,7 +13,6 @@ use crate::persistence::{ArborConfig, WorkflowStatus};
 use crate::pty::PtySession;
 use crate::ui;
 use crate::ui::ControlPanelState;
-use crate::ui::TerminalWidget;
 use crate::worktree::WorktreeManager;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -174,15 +173,15 @@ impl App {
                 if let Some(ref key) = self.active_worktree {
                     if let Some(pty) = self.pty_sessions.get(key) {
                         let screen_arc = pty.screen();
-                        let term_widget = TerminalWidget::new(screen_arc.clone())
-                            .dimmed(self.focus == Focus::Sidebar);
-                        frame.render_widget(term_widget, right_chunks[1]);
+                        let dimmed = self.focus == Focus::Sidebar;
+                        let (cursor_row, cursor_col) = ui::render_terminal(
+                            &screen_arc,
+                            right_chunks[1],
+                            frame.buffer_mut(),
+                            dimmed,
+                        );
 
-                        // Show cursor when terminal is focused
                         if self.focus == Focus::Terminal {
-                            let parser = screen_arc.lock().unwrap();
-                            let screen = parser.screen();
-                            let (cursor_row, cursor_col) = screen.cursor_position();
                             let cursor_x = right_chunks[1].x + cursor_col;
                             let cursor_y = right_chunks[1].y + cursor_row;
                             if cursor_x < right_chunks[1].right() && cursor_y < right_chunks[1].bottom() {
@@ -199,7 +198,7 @@ impl App {
 
             self.spinner_frame = self.spinner_frame.wrapping_add(1);
 
-            if event::poll(Duration::from_millis(50))? {
+            if event::poll(Duration::from_millis(16))? {
                 match event::read()? {
                     Event::Key(key) => {
                         // Dialogs consume raw key events first

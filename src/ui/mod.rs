@@ -3,4 +3,4 @@ mod terminal;
 
 pub use control_panel::render_control_panel;
 pub use control_panel::ControlPanelState;
-pub use terminal::TerminalWidget;
+pub use terminal::render_terminal;
