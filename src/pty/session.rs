@@ -2,13 +2,16 @@ use anyhow::{Context, Result};
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 use std::io::{Read, Write};
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 pub struct PtySession {
     writer: Box<dyn Write + Send>,
     parser: Arc<Mutex<vt100_ctt::Parser>>,
     _child: Box<dyn portable_pty::Child + Send + Sync>,
     master: Box<dyn portable_pty::MasterPty + Send>,
+    last_output: Arc<AtomicU64>,
 }
 
 impl PtySession {
@@ -45,7 +48,10 @@ impl PtySession {
 
         let parser = Arc::new(Mutex::new(vt100_ctt::Parser::new(rows, cols, 1000)));
 
+        let last_output = Arc::new(AtomicU64::new(0));
+
         // Spawn reader thread — feeds PTY output into vt100 parser
+        let last_output_clone = Arc::clone(&last_output);
         let parser_clone = Arc::clone(&parser);
         std::thread::spawn(move || {
             let mut buf = [0u8; 4096];
@@ -53,6 +59,11 @@ impl PtySession {
                 match reader.read(&mut buf) {
                     Ok(0) => break,
                     Ok(n) => {
+                        let now = SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .unwrap()
+                            .as_millis() as u64;
+                        last_output_clone.store(now, Ordering::Relaxed);
                         let mut p = parser_clone.lock().unwrap();
                         p.process(&buf[..n]);
                     }
@@ -66,6 +77,7 @@ impl PtySession {
             parser,
             _child: child,
             master: pair.master,
+            last_output,
         })
     }
 
@@ -91,5 +103,9 @@ impl PtySession {
 
     pub fn screen(&self) -> Arc<Mutex<vt100_ctt::Parser>> {
         Arc::clone(&self.parser)
+    }
+
+    pub fn last_output_millis(&self) -> u64 {
+        self.last_output.load(Ordering::Relaxed)
     }
 }
