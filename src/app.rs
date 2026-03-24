@@ -155,13 +155,23 @@ impl App {
                     self.focus == Focus::Sidebar,
                     self.spinner_frame,
                     &pty_last_outputs,
-                    &self.github_cache,
                 );
 
-                // Split right panel into header + terminal
+                // Split right panel into header + info bar + terminal
+                let has_pr = self.sidebar_state.selected < self.sidebar_state.worktrees.len()
+                    && {
+                        let wt = &self.sidebar_state.worktrees[self.sidebar_state.selected];
+                        self.github_cache.get(&wt.branch).is_some() || wt.ahead > 0 || wt.behind > 0
+                    };
+                let info_bar_height = if has_pr { 1 } else { 0 };
+
                 let right_chunks = Layout::default()
                     .direction(Direction::Vertical)
-                    .constraints([Constraint::Length(1), Constraint::Min(1)])
+                    .constraints([
+                        Constraint::Length(1),
+                        Constraint::Length(info_bar_height),
+                        Constraint::Min(1),
+                    ])
                     .split(chunks[1]);
 
                 // Render header
@@ -178,6 +188,45 @@ impl App {
                         ),
                     ]);
                     frame.render_widget(header, right_chunks[0]);
+
+                    // Render PR/git info bar
+                    if has_pr {
+                        let mut info_spans: Vec<Span> = vec![Span::raw(" ")];
+
+                        if let Some(pr) = self.github_cache.get(&wt.branch) {
+                            let (icon, color) = match pr.state {
+                                crate::github::PrState::Open => ("\u{e728}", Color::Green),
+                                crate::github::PrState::Draft => ("\u{e728}", Color::Yellow),
+                                crate::github::PrState::Merged => ("\u{e727}", Color::Magenta),
+                                crate::github::PrState::Closed => ("\u{e728}", Color::Red),
+                            };
+                            let state_label = match pr.state {
+                                crate::github::PrState::Open => "Open",
+                                crate::github::PrState::Draft => "Draft",
+                                crate::github::PrState::Merged => "Merged",
+                                crate::github::PrState::Closed => "Closed",
+                            };
+                            info_spans.push(Span::styled(format!("{} ", icon), Style::default().fg(color)));
+                            info_spans.push(Span::styled(format!("#{} ", pr.number), Style::default().fg(color).add_modifier(Modifier::BOLD)));
+                            info_spans.push(Span::styled(format!("{} ", state_label), Style::default().fg(color)));
+                            info_spans.push(Span::styled("· ", Style::default().fg(Color::DarkGray)));
+                            info_spans.push(Span::styled(&pr.url, Style::default().fg(Color::DarkGray)));
+                        }
+
+                        if wt.ahead > 0 || wt.behind > 0 {
+                            if info_spans.len() > 1 {
+                                info_spans.push(Span::styled("  ", Style::default()));
+                            }
+                            if wt.ahead > 0 {
+                                info_spans.push(Span::styled(format!("↑{}", wt.ahead), Style::default().fg(Color::Cyan)));
+                            }
+                            if wt.behind > 0 {
+                                info_spans.push(Span::styled(format!(" ↓{}", wt.behind), Style::default().fg(Color::Yellow)));
+                            }
+                        }
+
+                        frame.render_widget(Line::from(info_spans), right_chunks[1]);
+                    }
                 }
 
                 // Render terminal in remaining space (dimmed when sidebar focused)
@@ -185,17 +234,18 @@ impl App {
                     if let Some(pty) = self.pty_sessions.get(key) {
                         let screen_arc = pty.screen();
                         let dimmed = self.focus == Focus::Sidebar;
+                        let terminal_area = right_chunks[2];
                         let (cursor_row, cursor_col) = ui::render_terminal(
                             &screen_arc,
-                            right_chunks[1],
+                            terminal_area,
                             frame.buffer_mut(),
                             dimmed,
                         );
 
                         if self.focus == Focus::Terminal {
-                            let cursor_x = right_chunks[1].x + cursor_col;
-                            let cursor_y = right_chunks[1].y + cursor_row;
-                            if cursor_x < right_chunks[1].right() && cursor_y < right_chunks[1].bottom() {
+                            let cursor_x = terminal_area.x + cursor_col;
+                            let cursor_y = terminal_area.y + cursor_row;
+                            if cursor_x < terminal_area.right() && cursor_y < terminal_area.bottom() {
                                 frame.set_cursor_position((cursor_x, cursor_y));
                             }
                         }
