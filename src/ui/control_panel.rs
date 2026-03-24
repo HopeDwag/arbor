@@ -5,22 +5,23 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, List, ListItem, ListState, StatefulWidget, Widget};
 
 use crate::app::Dialog;
-use crate::worktree::format_age;
+use crate::persistence::WorkflowStatus;
 use crate::worktree::WorktreeInfo;
 
-pub struct SidebarState {
+pub struct ControlPanelState {
     pub selected: usize,
     pub worktrees: Vec<WorktreeInfo>,
     pub show_plus: bool,
 }
 
-pub fn render_sidebar(
-    state: &SidebarState,
+pub fn render_control_panel(
+    state: &ControlPanelState,
     dialog: &Dialog,
     area: Rect,
     buf: &mut Buffer,
     focused: bool,
-    drag_handle_active: bool,
+    spinner_frame: u8,
+    pty_last_outputs: &std::collections::HashMap<std::path::PathBuf, u64>,
 ) {
     let border_style = if focused {
         Style::default().fg(Color::Cyan)
@@ -36,58 +37,74 @@ pub fn render_sidebar(
     let inner = block.inner(area);
     block.render(area, buf);
 
-    // Highlight the right border when hovering/dragging to show it's resizable
-    if drag_handle_active {
-        let right_col = area.right().saturating_sub(1);
-        let handle_style = Style::default().fg(Color::Yellow);
-        for y in area.y..area.bottom() {
-            let cell = &mut buf[(right_col, y)];
-            cell.set_style(handle_style);
-        }
-        // Draw a grip indicator in the middle of the border
-        let mid_y = area.y + area.height / 2;
-        if mid_y > area.y && mid_y < area.bottom().saturating_sub(1) {
-            buf[(right_col, mid_y.saturating_sub(1))].set_symbol("╟");
-            buf[(right_col, mid_y)].set_symbol("↔");
-            buf[(right_col, mid_y + 1)].set_symbol("╢");
-        }
-    }
+    let now_millis = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
+
+    let groups: &[(WorkflowStatus, &str)] = &[
+        (WorkflowStatus::InProgress, "IN PROGRESS"),
+        (WorkflowStatus::Queued, "QUEUED"),
+        (WorkflowStatus::Done, "DONE"),
+    ];
 
     let mut items: Vec<ListItem> = Vec::new();
+    let mut flat_to_visual: Vec<usize> = Vec::new();
 
-    for (i, wt) in state.worktrees.iter().enumerate() {
-        let is_selected = i == state.selected;
+    for (status, label) in groups {
+        let group_wts: Vec<(usize, &WorktreeInfo)> = state.worktrees.iter()
+            .enumerate()
+            .filter(|(_, wt)| wt.workflow_status == *status)
+            .collect();
 
-        let prefix = if wt.is_main { "🌳 " } else if is_selected { "▼ " } else { "▶ " };
-        let name_style = if is_selected {
-            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().fg(Color::White)
-        };
+        if group_wts.is_empty() {
+            continue;
+        }
 
-        let name_line = Line::from(vec![
-            Span::raw(prefix),
-            Span::styled(&wt.branch, name_style),
-        ]);
+        // Group header
+        items.push(ListItem::new(Line::from(Span::styled(
+            format!(" {}", label),
+            Style::default().fg(Color::DarkGray).add_modifier(Modifier::BOLD),
+        ))));
 
-        let status_line = if let Some(ref status) = wt.status {
-            let dot = if status.is_dirty {
-                Span::styled("● ", Style::default().fg(Color::Yellow))
+        for (flat_idx, wt) in &group_wts {
+            let is_selected = *flat_idx == state.selected;
+
+            // Activity icon
+            let icon = if let Some(&last_output) = pty_last_outputs.get(&wt.path) {
+                if last_output > 0 && now_millis.saturating_sub(last_output) < 500 {
+                    let frames = ['\u{280B}', '\u{2819}', '\u{2839}', '\u{2838}', '\u{283C}', '\u{2834}', '\u{2826}', '\u{2827}', '\u{2807}', '\u{280F}'];
+                    let frame_char = frames[(spinner_frame % 10) as usize];
+                    Span::styled(format!("{} ", frame_char), Style::default().fg(Color::Cyan))
+                } else {
+                    Span::styled("! ", Style::default().fg(Color::Yellow))
+                }
             } else {
-                Span::styled("● ", Style::default().fg(Color::Green))
+                match wt.workflow_status {
+                    WorkflowStatus::Queued => Span::styled("\u{25B6} ", Style::default().fg(Color::DarkGray)),
+                    WorkflowStatus::Done => Span::styled("\u{2713} ", Style::default().fg(Color::Green)),
+                    WorkflowStatus::InProgress => Span::styled("\u{00B7} ", Style::default().fg(Color::DarkGray)),
+                }
             };
-            let label = if status.is_dirty { "dirty" } else { "clean" };
-            let age = format_age(status.last_commit_age_secs);
-            Line::from(vec![
-                Span::raw("  "),
-                dot,
-                Span::styled(format!("{} · {}", label, age), Style::default().fg(Color::DarkGray)),
-            ])
-        } else {
-            Line::from(Span::styled("  ? unknown", Style::default().fg(Color::DarkGray)))
-        };
 
-        items.push(ListItem::new(vec![name_line, status_line]));
+            let display_name = wt.short_name.as_deref().unwrap_or(&wt.branch);
+            let name_style = if is_selected {
+                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(Color::White)
+            };
+
+            let name_line = Line::from(vec![
+                Span::raw("  "),
+                icon,
+                Span::styled(display_name, name_style),
+            ]);
+
+            flat_to_visual.push(items.len());
+            items.push(ListItem::new(name_line));
+        }
+
+        items.push(ListItem::new(Line::from("")));
     }
 
     // [+] new worktree button
@@ -96,13 +113,20 @@ pub fn render_sidebar(
     } else {
         Style::default().fg(Color::DarkGray)
     };
+    let plus_visual_idx = items.len();
     items.push(ListItem::new(Line::from(Span::styled(
         "  [+] new worktree",
         plus_style,
     ))));
 
     let mut list_state = ListState::default();
-    list_state.select(Some(state.selected));
+    if state.selected < state.worktrees.len() {
+        if let Some(&visual_idx) = flat_to_visual.get(state.selected) {
+            list_state.select(Some(visual_idx));
+        }
+    } else {
+        list_state.select(Some(plus_visual_idx));
+    }
 
     let list = List::new(items)
         .highlight_style(Style::default().bg(Color::DarkGray));
@@ -160,7 +184,7 @@ pub fn render_sidebar(
 
                 // Show current archived selection if cycling
                 if let Some(idx) = selected_archived {
-                    let preview = format!(" → {}", archived[*idx]);
+                    let preview = format!(" \u{2192} {}", archived[*idx]);
                     let preview_line = Line::from(Span::styled(
                         preview,
                         Style::default().fg(Color::Yellow).bg(Color::DarkGray).add_modifier(Modifier::BOLD),
@@ -175,7 +199,7 @@ pub fn render_sidebar(
             let _ = row; // suppress unused warning
             let hint_y = dialog_area.bottom().saturating_sub(1);
             let hint = Line::from(Span::styled(
-                " Enter confirm · Esc cancel",
+                " Enter confirm \u{00B7} Esc cancel",
                 Style::default().fg(Color::Gray).bg(Color::DarkGray),
             ));
             buf.set_line(dialog_area.x, hint_y, &hint, dialog_area.width);
@@ -205,7 +229,7 @@ pub fn render_sidebar(
             buf.set_line(dialog_area.x, dialog_area.y + 1, &prompt, dialog_area.width);
 
             let hint = Line::from(Span::styled(
-                " Branch kept · restore with n",
+                " Branch kept \u{00B7} restore with n",
                 Style::default().fg(Color::Gray).bg(Color::DarkGray),
             ));
             buf.set_line(dialog_area.x, dialog_area.y + 2, &hint, dialog_area.width);

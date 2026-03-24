@@ -11,7 +11,7 @@ use std::time::Duration;
 use crate::keys::{self, Action, Focus};
 use crate::pty::PtySession;
 use crate::ui;
-use crate::ui::SidebarState;
+use crate::ui::ControlPanelState;
 use crate::ui::TerminalWidget;
 use crate::worktree::WorktreeManager;
 
@@ -31,11 +31,11 @@ pub struct App {
     pty_sessions: HashMap<PathBuf, PtySession>,
     active_worktree: Option<PathBuf>,
     pub focus: Focus,
-    pub sidebar_state: SidebarState,
+    pub sidebar_state: ControlPanelState,
     pub dialog: Dialog,
     sidebar_width: u16,
     dragging_sidebar: bool,
-    hover_border: bool,
+    spinner_frame: u8,
     should_quit: bool,
 }
 
@@ -44,7 +44,7 @@ impl App {
         let worktree_mgr = WorktreeManager::open(repo_path)?;
         let worktrees = worktree_mgr.list()?;
 
-        let sidebar_state = SidebarState {
+        let sidebar_state = ControlPanelState {
             selected: 0,
             worktrees,
             show_plus: true,
@@ -59,7 +59,7 @@ impl App {
             dialog: Dialog::None,
             sidebar_width: 30,
             dragging_sidebar: false,
-            hover_border: false,
+            spinner_frame: 0,
             should_quit: false,
         })
     }
@@ -84,13 +84,18 @@ impl App {
                     ])
                     .split(outer[0]);
 
-                ui::render_sidebar(
+                let pty_last_outputs: std::collections::HashMap<std::path::PathBuf, u64> = self.pty_sessions.iter()
+                    .map(|(k, v)| (k.clone(), v.last_output_millis()))
+                    .collect();
+
+                ui::render_control_panel(
                     &self.sidebar_state,
                     &self.dialog,
                     chunks[0],
                     frame.buffer_mut(),
                     self.focus == Focus::Sidebar,
-                    self.hover_border || self.dragging_sidebar,
+                    self.spinner_frame,
+                    &pty_last_outputs,
                 );
 
                 // Split right panel into header + terminal
@@ -128,6 +133,8 @@ impl App {
                 let status_line = self.build_status_line(outer[1].width);
                 frame.render_widget(status_line, outer[1]);
             })?;
+
+            self.spinner_frame = self.spinner_frame.wrapping_add(1);
 
             if event::poll(Duration::from_millis(50))? {
                 match event::read()? {
@@ -371,9 +378,7 @@ impl App {
             && mouse.column <= border_col + 1;
 
         match mouse.kind {
-            MouseEventKind::Moved => {
-                self.hover_border = near_border;
-            }
+            MouseEventKind::Moved => {}
             MouseEventKind::Down(_) => {
                 if near_border {
                     self.dragging_sidebar = true;
