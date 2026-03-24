@@ -67,6 +67,16 @@ fn test_repo_root_accessor() {
 }
 
 #[test]
+fn test_worktree_has_ahead_behind_fields() {
+    let dir = init_test_repo();
+    let manager = arbor::worktree::WorktreeManager::open(dir.path()).unwrap();
+    let worktrees = manager.list().unwrap();
+    // No remote, so both should be 0
+    assert_eq!(worktrees[0].ahead, 0);
+    assert_eq!(worktrees[0].behind, 0);
+}
+
+#[test]
 fn test_full_crud_cycle() {
     let dir = init_test_repo();
     let manager = arbor::worktree::WorktreeManager::open(dir.path()).unwrap();

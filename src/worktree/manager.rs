@@ -13,6 +13,8 @@ pub struct WorktreeInfo {
     pub status: Option<WorktreeStatus>,
     pub workflow_status: WorkflowStatus,
     pub short_name: Option<String>,
+    pub ahead: u32,
+    pub behind: u32,
 }
 
 pub struct WorktreeManager {
@@ -41,6 +43,7 @@ impl WorktreeManager {
             .and_then(|h| h.shorthand().map(String::from))
             .unwrap_or_else(|| "HEAD".to_string());
         let main_status = status::check_status(&self.repo_root).ok();
+        let (ahead, behind) = status::ahead_behind(&self.repo_root);
 
         result.push(WorktreeInfo {
             name: main_branch.clone(),
@@ -50,6 +53,8 @@ impl WorktreeManager {
             status: main_status,
             workflow_status: WorkflowStatus::InProgress,
             short_name: None,
+            ahead,
+            behind,
         });
 
         // Additional worktrees
@@ -65,6 +70,7 @@ impl WorktreeManager {
                 .and_then(|h| h.shorthand().map(String::from))
                 .unwrap_or_else(|| name.to_string());
             let wt_status = status::check_status(&wt_path).ok();
+            let (ahead, behind) = status::ahead_behind(&wt_path);
 
             result.push(WorktreeInfo {
                 name: name.to_string(),
@@ -74,6 +80,8 @@ impl WorktreeManager {
                 status: wt_status,
                 workflow_status: WorkflowStatus::Queued,
                 short_name: None,
+                ahead,
+                behind,
             });
         }
 

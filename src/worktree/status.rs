@@ -25,6 +25,51 @@ pub fn check_status(worktree_path: &Path) -> Result<WorktreeStatus> {
     })
 }
 
+/// Calculate how many commits the local branch is ahead/behind its upstream.
+/// Returns (ahead, behind). Returns (0, 0) if no upstream is set.
+pub fn ahead_behind(repo_path: &Path) -> (u32, u32) {
+    let repo = match Repository::open(repo_path) {
+        Ok(r) => r,
+        Err(_) => return (0, 0),
+    };
+
+    let head = match repo.head() {
+        Ok(h) => h,
+        Err(_) => return (0, 0),
+    };
+
+    let local_oid = match head.target() {
+        Some(oid) => oid,
+        None => return (0, 0),
+    };
+
+    // Find upstream branch
+    let branch_name = match head.shorthand() {
+        Some(name) => name.to_string(),
+        None => return (0, 0),
+    };
+
+    let branch = match repo.find_branch(&branch_name, git2::BranchType::Local) {
+        Ok(b) => b,
+        Err(_) => return (0, 0),
+    };
+
+    let upstream = match branch.upstream() {
+        Ok(u) => u,
+        Err(_) => return (0, 0), // No upstream configured
+    };
+
+    let upstream_oid = match upstream.get().target() {
+        Some(oid) => oid,
+        None => return (0, 0),
+    };
+
+    match repo.graph_ahead_behind(local_oid, upstream_oid) {
+        Ok((ahead, behind)) => (ahead as u32, behind as u32),
+        Err(_) => (0, 0),
+    }
+}
+
 pub fn format_age(secs: u64) -> String {
     if secs < 60 {
         return format!("{}s", secs);
