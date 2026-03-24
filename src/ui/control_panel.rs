@@ -12,10 +12,12 @@ pub struct ControlPanelState {
     pub selected: usize,
     pub worktrees: Vec<WorktreeInfo>,
     pub show_plus: bool,
+    pub row_to_flat_idx: Vec<Option<usize>>,
+    pub group_regions: Vec<(WorkflowStatus, u16, u16)>, // (status, start_row, end_row)
 }
 
 pub fn render_control_panel(
-    state: &ControlPanelState,
+    state: &mut ControlPanelState,
     dialog: &Dialog,
     area: Rect,
     buf: &mut Buffer,
@@ -48,8 +50,14 @@ pub fn render_control_panel(
         (WorkflowStatus::Done, "DONE"),
     ];
 
+    // Clear layout tracking
+    state.row_to_flat_idx.clear();
+    state.group_regions.clear();
+
     let mut items: Vec<ListItem> = Vec::new();
     let mut flat_to_visual: Vec<usize> = Vec::new();
+    // visual_row tracks the row offset within the inner area (0-based)
+    let mut visual_row: usize = 0;
 
     for (status, label) in groups {
         let group_wts: Vec<(usize, &WorktreeInfo)> = state.worktrees.iter()
@@ -61,11 +69,18 @@ pub fn render_control_panel(
             continue;
         }
 
-        // Group header
+        // Group header - record start_row as absolute screen row
+        let group_start_row = inner.y + visual_row as u16;
         items.push(ListItem::new(Line::from(Span::styled(
             format!(" {}", label),
             Style::default().fg(Color::DarkGray).add_modifier(Modifier::BOLD),
         ))));
+        // Ensure row_to_flat_idx is long enough, map header row to None
+        let abs_row = (inner.y + visual_row as u16) as usize;
+        if state.row_to_flat_idx.len() <= abs_row {
+            state.row_to_flat_idx.resize(abs_row + 1, None);
+        }
+        visual_row += 1;
 
         for (flat_idx, wt) in &group_wts {
             let is_selected = *flat_idx == state.selected;
@@ -102,9 +117,21 @@ pub fn render_control_panel(
 
             flat_to_visual.push(items.len());
             items.push(ListItem::new(name_line));
+            // Track row -> flat_idx mapping
+            let abs_row = (inner.y + visual_row as u16) as usize;
+            if state.row_to_flat_idx.len() <= abs_row {
+                state.row_to_flat_idx.resize(abs_row + 1, None);
+            }
+            state.row_to_flat_idx[abs_row] = Some(*flat_idx);
+            visual_row += 1;
         }
 
+        // Record group region (start_row .. current row)
+        let group_end_row = inner.y + visual_row as u16;
+        state.group_regions.push((*status, group_start_row, group_end_row));
+
         items.push(ListItem::new(Line::from("")));
+        visual_row += 1;
     }
 
     // [+] new worktree button

@@ -35,6 +35,11 @@ pub enum Dialog {
     ArchiveConfirm(usize, String), // index, worktree name
 }
 
+struct DragState {
+    worktree_idx: usize,
+    dragging: bool,
+}
+
 pub struct App {
     worktree_mgr: WorktreeManager,
     pty_sessions: HashMap<PathBuf, PtySession>,
@@ -47,6 +52,7 @@ pub struct App {
     should_quit: bool,
     config: ArborConfig,
     repo_root: PathBuf,
+    drag_state: Option<DragState>,
 }
 
 impl App {
@@ -69,6 +75,8 @@ impl App {
             selected: 0,
             worktrees,
             show_plus: true,
+            row_to_flat_idx: Vec::new(),
+            group_regions: Vec::new(),
         };
 
         let mut app = Self {
@@ -83,6 +91,7 @@ impl App {
             should_quit: false,
             config,
             repo_root,
+            drag_state: None,
         };
         app.sidebar_width = app.calculate_panel_width();
         Ok(app)
@@ -130,7 +139,7 @@ impl App {
                     .collect();
 
                 ui::render_control_panel(
-                    &self.sidebar_state,
+                    &mut self.sidebar_state,
                     &self.dialog,
                     chunks[0],
                     frame.buffer_mut(),
@@ -231,6 +240,9 @@ impl App {
                 spans.push(sep.clone());
                 spans.push(Span::styled("Enter", key_style));
                 spans.push(Span::styled(" select", label_style));
+                spans.push(sep.clone());
+                spans.push(Span::styled("s", key_style));
+                spans.push(Span::styled(" status", label_style));
                 spans.push(sep.clone());
                 spans.push(Span::styled("n", key_style));
                 spans.push(Span::styled(" new", label_style));
@@ -454,11 +466,61 @@ impl App {
                         self.sidebar_state.worktrees = self.worktree_mgr.list()?;
                         self.focus = Focus::Sidebar;
                     }
+                    // Look up which worktree was clicked via row_to_flat_idx
+                    let row = mouse.row as usize;
+                    let clicked_idx = if row < self.sidebar_state.row_to_flat_idx.len() {
+                        self.sidebar_state.row_to_flat_idx[row]
+                    } else {
+                        None
+                    };
+                    if let Some(idx) = clicked_idx {
+                        self.sidebar_state.selected = idx;
+                        self.focus = Focus::Sidebar;
+                        // Start drag if not main worktree
+                        if idx < self.sidebar_state.worktrees.len()
+                            && !self.sidebar_state.worktrees[idx].is_main
+                        {
+                            self.drag_state = Some(DragState {
+                                worktree_idx: idx,
+                                dragging: false,
+                            });
+                        }
+                    }
                 } else {
                     self.focus = Focus::Terminal;
                 }
             }
-            MouseEventKind::Up(_) => {}
+            MouseEventKind::Drag(_) => {
+                if let Some(ref mut ds) = self.drag_state {
+                    ds.dragging = true;
+                }
+            }
+            MouseEventKind::Up(_) => {
+                if let Some(ds) = self.drag_state.take() {
+                    if ds.dragging {
+                        // Find the target group based on mouse row
+                        let row = mouse.row;
+                        let target_status = self.sidebar_state.group_regions.iter()
+                            .find(|(_status, start, end)| row >= *start && row < *end)
+                            .map(|(status, _, _)| *status);
+                        if let Some(new_status) = target_status {
+                            let idx = ds.worktree_idx;
+                            if idx < self.sidebar_state.worktrees.len() {
+                                let wt = &mut self.sidebar_state.worktrees[idx];
+                                if !wt.is_main && wt.workflow_status != new_status {
+                                    wt.workflow_status = new_status;
+                                    let entry = self.config.worktrees
+                                        .entry(wt.name.clone())
+                                        .or_default();
+                                    entry.status = new_status;
+                                    let _ = self.config.save(&self.repo_root);
+                                }
+                            }
+                        }
+                    }
+                    // If not dragging, it was a click — already handled on Down
+                }
+            }
             _ => {}
         }
         Ok(())
