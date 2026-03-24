@@ -262,6 +262,9 @@ impl App {
                 spans.push(Span::styled("a", key_style));
                 spans.push(Span::styled(" archive", label_style));
                 spans.push(sep.clone());
+                spans.push(Span::styled("r", key_style));
+                spans.push(Span::styled(" refresh", label_style));
+                spans.push(sep.clone());
                 spans.push(Span::styled("Shift+→", key_style));
                 spans.push(Span::styled(" terminal", label_style));
                 spans.push(sep.clone());
@@ -356,6 +359,7 @@ impl App {
                     }
                 }
             }
+            Action::Refresh => { /* implemented in GH-5 */ }
             Action::Quit => self.should_quit = true,
             _ => {}
         }
