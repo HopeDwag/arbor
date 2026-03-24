@@ -3,6 +3,7 @@ use git2::Repository;
 use std::path::{Path, PathBuf};
 
 use super::status::{self, WorktreeStatus};
+use crate::persistence::WorkflowStatus;
 
 pub struct WorktreeInfo {
     pub name: String,
@@ -10,6 +11,8 @@ pub struct WorktreeInfo {
     pub path: PathBuf,
     pub is_main: bool,
     pub status: Option<WorktreeStatus>,
+    pub workflow_status: WorkflowStatus,
+    pub short_name: Option<String>,
 }
 
 pub struct WorktreeManager {
@@ -45,6 +48,8 @@ impl WorktreeManager {
             path: self.repo_root.clone(),
             is_main: true,
             status: main_status,
+            workflow_status: WorkflowStatus::InProgress,
+            short_name: None,
         });
 
         // Additional worktrees
@@ -67,6 +72,8 @@ impl WorktreeManager {
                 path: wt_path,
                 is_main: false,
                 status: wt_status,
+                workflow_status: WorkflowStatus::Queued,
+                short_name: None,
             });
         }
 
@@ -84,6 +91,10 @@ impl WorktreeManager {
         });
 
         Ok(result)
+    }
+
+    pub fn repo_root(&self) -> &std::path::Path {
+        &self.repo_root
     }
 
     pub fn create(&self, branch_name: &str) -> Result<PathBuf> {

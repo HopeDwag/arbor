@@ -51,6 +51,22 @@ fn test_cannot_delete_main() {
 }
 
 #[test]
+fn test_worktree_info_has_workflow_status_and_short_name() {
+    let dir = init_test_repo();
+    let manager = arbor::worktree::WorktreeManager::open(dir.path()).unwrap();
+    let worktrees = manager.list().unwrap();
+    assert_eq!(worktrees[0].workflow_status, arbor::persistence::WorkflowStatus::InProgress);
+    assert_eq!(worktrees[0].short_name, None);
+}
+
+#[test]
+fn test_repo_root_accessor() {
+    let dir = init_test_repo();
+    let manager = arbor::worktree::WorktreeManager::open(dir.path()).unwrap();
+    assert!(manager.repo_root().exists());
+}
+
+#[test]
 fn test_full_crud_cycle() {
     let dir = init_test_repo();
     let manager = arbor::worktree::WorktreeManager::open(dir.path()).unwrap();
