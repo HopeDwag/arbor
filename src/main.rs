@@ -48,10 +48,18 @@ fn main() -> Result<()> {
         }
     }
 
-    crossterm::execute!(std::io::stdout(), crossterm::event::EnableMouseCapture)?;
+    crossterm::execute!(
+        std::io::stdout(),
+        crossterm::event::EnableMouseCapture,
+        crossterm::cursor::SetCursorStyle::BlinkingBar,
+    )?;
     let mut terminal = ratatui::init();
     let result = app.run(&mut terminal);
     ratatui::restore();
-    crossterm::execute!(std::io::stdout(), crossterm::event::DisableMouseCapture)?;
+    crossterm::execute!(
+        std::io::stdout(),
+        crossterm::event::DisableMouseCapture,
+        crossterm::cursor::SetCursorStyle::DefaultUserShape,
+    )?;
     result
 }
