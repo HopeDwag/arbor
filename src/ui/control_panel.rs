@@ -24,6 +24,7 @@ pub fn render_control_panel(
     focused: bool,
     spinner_frame: u8,
     pty_last_outputs: &std::collections::HashMap<std::path::PathBuf, u64>,
+    pr_cache: &crate::github::GitHubCache,
 ) {
     let border_style = if focused {
         Style::default().fg(Color::Cyan)
@@ -109,11 +110,33 @@ pub fn render_control_panel(
                 Style::default().fg(Color::White)
             };
 
-            let name_line = Line::from(vec![
+            let mut extra_spans: Vec<Span> = Vec::new();
+
+            if wt.ahead > 0 {
+                extra_spans.push(Span::styled(format!(" \u{2191}{}", wt.ahead), Style::default().fg(Color::Cyan)));
+            }
+            if wt.behind > 0 {
+                extra_spans.push(Span::styled(format!(" \u{2193}{}", wt.behind), Style::default().fg(Color::Yellow)));
+            }
+
+            if let Some(pr) = pr_cache.get(&wt.branch) {
+                let (icon_char, color) = match pr.state {
+                    crate::github::PrState::Open => ("\u{e728}", Color::Green),
+                    crate::github::PrState::Draft => ("\u{e728}", Color::Yellow),
+                    crate::github::PrState::Merged => ("\u{e727}", Color::Magenta),
+                    crate::github::PrState::Closed => ("\u{e728}", Color::Red),
+                };
+                extra_spans.push(Span::styled(format!(" {}", icon_char), Style::default().fg(color)));
+                extra_spans.push(Span::styled(format!("#{}", pr.number), Style::default().fg(color)));
+            }
+
+            let mut line_spans = vec![
                 Span::raw("  "),
                 icon,
                 Span::styled(display_name, name_style),
-            ]);
+            ];
+            line_spans.extend(extra_spans);
+            let name_line = Line::from(line_spans);
 
             flat_to_visual.push(items.len());
             items.push(ListItem::new(name_line));

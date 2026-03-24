@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::Duration;
 
+use crate::github::GitHubCache;
 use crate::keys::{self, Action, Focus};
 use crate::persistence::{ArborConfig, WorkflowStatus};
 use crate::pty::PtySession;
@@ -52,6 +53,7 @@ pub struct App {
     config: ArborConfig,
     repo_root: PathBuf,
     drag_state: Option<DragState>,
+    github_cache: GitHubCache,
 }
 
 impl App {
@@ -59,6 +61,7 @@ impl App {
         let worktree_mgr = WorktreeManager::open(repo_path)?;
         let repo_root = worktree_mgr.repo_root().to_path_buf();
         let config = ArborConfig::load(&repo_root);
+        let github_cache = GitHubCache::refresh(&repo_root);
 
         let mut worktrees = worktree_mgr.list()?;
         for wt in &mut worktrees {
@@ -91,6 +94,7 @@ impl App {
             config,
             repo_root,
             drag_state: None,
+            github_cache,
         };
         app.sidebar_width = app.calculate_panel_width();
         Ok(app)
@@ -104,7 +108,13 @@ impl App {
         let max_name_len = self.sidebar_state.worktrees.iter()
             .map(|wt| {
                 let display = wt.short_name.as_deref().unwrap_or(&wt.branch);
-                display.len()
+                let mut len = display.len();
+                // Account for ahead/behind indicators (e.g. " ↑3 ↓2")
+                if wt.ahead > 0 { len += 3; }
+                if wt.behind > 0 { len += 3; }
+                // Account for PR badge (e.g. " #123")
+                if self.github_cache.get(&wt.branch).is_some() { len += 7; }
+                len
             })
             .max()
             .unwrap_or(0);
@@ -145,6 +155,7 @@ impl App {
                     self.focus == Focus::Sidebar,
                     self.spinner_frame,
                     &pty_last_outputs,
+                    &self.github_cache,
                 );
 
                 // Split right panel into header + terminal
@@ -359,7 +370,11 @@ impl App {
                     }
                 }
             }
-            Action::Refresh => { /* implemented in GH-5 */ }
+            Action::Refresh => {
+                self.github_cache = GitHubCache::refresh(&self.repo_root);
+                self.sidebar_state.worktrees = self.worktree_mgr.list()?;
+                self.apply_config();
+            }
             Action::Quit => self.should_quit = true,
             _ => {}
         }
@@ -385,6 +400,7 @@ impl App {
                         let sn = if short_name.is_empty() { None } else { Some(short_name.clone()) };
                         self.worktree_mgr.create(&branch)?;
                         self.sidebar_state.worktrees = self.worktree_mgr.list()?;
+                        self.github_cache = GitHubCache::refresh(&self.repo_root);
                         // Persist short_name
                         let entry = self.config.worktrees.entry(branch.clone()).or_default();
                         if let Some(ref name) = sn {
@@ -455,6 +471,7 @@ impl App {
 
                         self.worktree_mgr.delete(&name, false)?;
                         self.sidebar_state.worktrees = self.worktree_mgr.list()?;
+                        self.github_cache = GitHubCache::refresh(&self.repo_root);
                         self.sidebar_state.selected = 0;
                         self.dialog = Dialog::None;
                         let size = crossterm::terminal::size()?;
@@ -536,6 +553,18 @@ impl App {
             _ => {}
         }
         Ok(())
+    }
+
+    fn apply_config(&mut self) {
+        for wt in &mut self.sidebar_state.worktrees {
+            if wt.is_main {
+                wt.workflow_status = WorkflowStatus::InProgress;
+            } else if let Some(wt_config) = self.config.worktrees.get(&wt.name) {
+                wt.workflow_status = wt_config.status;
+                wt.short_name = wt_config.short_name.clone();
+            }
+        }
+        self.sidebar_width = self.calculate_panel_width();
     }
 
     fn ensure_pty_for_selected(&mut self, rows: u16, cols: u16) -> Result<()> {
