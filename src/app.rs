@@ -287,12 +287,8 @@ impl App {
                     Focus::Sidebar => Focus::Terminal,
                     Focus::Terminal => Focus::Sidebar,
                 };
-                if self.focus == Focus::Sidebar {
-                    self.sidebar_state.worktrees = self.worktree_mgr.list()?;
-                }
             }
             Action::FocusSidebar => {
-                self.sidebar_state.worktrees = self.worktree_mgr.list()?;
                 self.focus = Focus::Sidebar;
             }
             Action::FocusTerminal => self.focus = Focus::Terminal,
