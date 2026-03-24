@@ -262,16 +262,7 @@ impl App {
                     }
                 }
             }
-            Action::SidebarResizeLeft => {
-                if self.sidebar_width > 20 {
-                    self.sidebar_width -= 2;
-                }
-            }
-            Action::SidebarResizeRight => {
-                if self.sidebar_width < 60 {
-                    self.sidebar_width += 2;
-                }
-            }
+            Action::StatusCycle => { /* implemented in Task 7 */ }
             Action::TerminalInput(key) => {
                 if let Some(ref active) = self.active_worktree {
                     if let Some(ref mut pty) = self.pty_sessions.get_mut(active) {
