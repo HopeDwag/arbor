@@ -172,7 +172,7 @@ impl App {
 
                 // Render terminal in remaining space (dimmed when sidebar focused)
                 if let Some(ref key) = self.active_worktree {
-                    if let Some(ref pty) = self.pty_sessions.get(key) {
+                    if let Some(pty) = self.pty_sessions.get(key) {
                         let term_widget = TerminalWidget::new(pty.screen())
                             .dimmed(self.focus == Focus::Sidebar);
                         frame.render_widget(term_widget, right_chunks[1]);
