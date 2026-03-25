@@ -8,14 +8,17 @@ pub enum WorkflowStatus {
     #[default]
     Queued,
     InProgress,
+    InReview,
     Done,
 }
 
 impl WorkflowStatus {
+    /// Cycle through manual statuses (skips InReview — that's auto from PR state)
     pub fn next(self) -> Self {
         match self {
             Self::Queued => Self::InProgress,
             Self::InProgress => Self::Done,
+            Self::InReview => Self::InProgress, // manual override out of review
             Self::Done => Self::Queued,
         }
     }

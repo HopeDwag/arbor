@@ -48,4 +48,6 @@ fn test_workflow_status_cycle() {
     assert_eq!(WorkflowStatus::Queued.next(), WorkflowStatus::InProgress);
     assert_eq!(WorkflowStatus::InProgress.next(), WorkflowStatus::Done);
     assert_eq!(WorkflowStatus::Done.next(), WorkflowStatus::Queued);
+    // InReview cycles back to InProgress (manual override out of review)
+    assert_eq!(WorkflowStatus::InReview.next(), WorkflowStatus::InProgress);
 }

@@ -71,6 +71,16 @@ impl App {
                 wt.workflow_status = wt_config.status;
                 wt.short_name = wt_config.short_name.clone();
             }
+            // Auto-status from PR state (overrides manual status)
+            if !wt.is_main {
+                if let Some(pr) = github_cache.get(&wt.branch) {
+                    match pr.state {
+                        crate::github::PrState::Open => wt.workflow_status = WorkflowStatus::InReview,
+                        crate::github::PrState::Merged => wt.workflow_status = WorkflowStatus::Done,
+                        _ => {}
+                    }
+                }
+            }
         }
 
         let sidebar_state = ControlPanelState {
@@ -612,6 +622,16 @@ impl App {
             } else if let Some(wt_config) = self.config.worktrees.get(&wt.name) {
                 wt.workflow_status = wt_config.status;
                 wt.short_name = wt_config.short_name.clone();
+            }
+            // Auto-status from PR state (overrides manual status)
+            if !wt.is_main {
+                if let Some(pr) = self.github_cache.get(&wt.branch) {
+                    match pr.state {
+                        crate::github::PrState::Open => wt.workflow_status = WorkflowStatus::InReview,
+                        crate::github::PrState::Merged => wt.workflow_status = WorkflowStatus::Done,
+                        _ => {}
+                    }
+                }
             }
         }
         self.sidebar_width = self.calculate_panel_width();

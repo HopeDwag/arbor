@@ -46,6 +46,7 @@ pub fn render_control_panel(
 
     let groups: &[(WorkflowStatus, &str)] = &[
         (WorkflowStatus::InProgress, "IN PROGRESS"),
+        (WorkflowStatus::InReview, "IN REVIEW"),
         (WorkflowStatus::Queued, "QUEUED"),
         (WorkflowStatus::Done, "DONE"),
     ];
@@ -98,6 +99,7 @@ pub fn render_control_panel(
                 match wt.workflow_status {
                     WorkflowStatus::Queued => Span::styled("\u{25B6} ", Style::default().fg(Color::DarkGray)),
                     WorkflowStatus::Done => Span::styled("\u{2713} ", Style::default().fg(Color::Green)),
+                    WorkflowStatus::InReview => Span::styled("\u{e728} ", Style::default().fg(Color::Cyan)),
                     WorkflowStatus::InProgress => Span::styled("\u{00B7} ", Style::default().fg(Color::DarkGray)),
                 }
             };
