@@ -105,8 +105,10 @@ pub fn render_control_panel(
             };
 
             let display_name = wt.short_name.as_deref().unwrap_or(&wt.branch);
-            let name_style = if is_selected {
+            let name_style = if is_selected && focused {
                 Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+            } else if is_selected {
+                Style::default().fg(Color::DarkGray).add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(Color::White)
             };
@@ -157,8 +159,12 @@ pub fn render_control_panel(
         list_state.select(Some(plus_visual_idx));
     }
 
-    let list = List::new(items)
-        .highlight_style(Style::default().bg(Color::DarkGray));
+    let highlight = if focused {
+        Style::default().bg(Color::DarkGray)
+    } else {
+        Style::default()
+    };
+    let list = List::new(items).highlight_style(highlight);
 
     StatefulWidget::render(list, inner, buf, &mut list_state);
 
