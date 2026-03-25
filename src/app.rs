@@ -333,9 +333,6 @@ impl App {
                 spans.push(Span::styled("a", key_style));
                 spans.push(Span::styled(" archive", label_style));
                 spans.push(sep.clone());
-                spans.push(Span::styled("r", key_style));
-                spans.push(Span::styled(" refresh", label_style));
-                spans.push(sep.clone());
                 spans.push(Span::styled("Shift+→", key_style));
                 spans.push(Span::styled(" terminal", label_style));
                 spans.push(sep.clone());
@@ -430,11 +427,6 @@ impl App {
                     }
                 }
             }
-            Action::Refresh => {
-                self.github_cache.force_refresh(&self.repo_root);
-                self.sidebar_state.worktrees = self.worktree_mgr.list()?;
-                self.apply_config();
-            }
             Action::Quit => self.should_quit = true,
             _ => {}
         }
@@ -461,6 +453,7 @@ impl App {
                         self.worktree_mgr.create(&branch)?;
                         self.sidebar_state.worktrees = self.worktree_mgr.list()?;
                         self.github_cache.force_refresh(&self.repo_root);
+                        self.apply_config();
                         // Persist short_name
                         let entry = self.config.worktrees.entry(branch.clone()).or_default();
                         if let Some(ref name) = sn {
@@ -532,6 +525,7 @@ impl App {
                         self.worktree_mgr.delete(&name, false)?;
                         self.sidebar_state.worktrees = self.worktree_mgr.list()?;
                         self.github_cache.force_refresh(&self.repo_root);
+                        self.apply_config();
                         self.sidebar_state.selected = 0;
                         self.dialog = Dialog::None;
                         let size = crossterm::terminal::size()?;
@@ -551,10 +545,7 @@ impl App {
             MouseEventKind::Moved => {}
             MouseEventKind::Down(_) => {
                 if mouse.column < self.sidebar_width {
-                    if self.focus != Focus::Sidebar {
-                        self.sidebar_state.worktrees = self.worktree_mgr.list()?;
-                        self.focus = Focus::Sidebar;
-                    }
+                    self.focus = Focus::Sidebar;
                     // Look up which worktree was clicked via row_to_flat_idx
                     let row = mouse.row as usize;
                     let clicked_idx = if row < self.sidebar_state.row_to_flat_idx.len() {
