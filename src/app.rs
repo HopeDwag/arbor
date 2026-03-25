@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use crate::github::GitHubCache;
+use crate::github::SharedGitHubCache;
 use crate::keys::{self, Action, Focus};
 use crate::persistence::{ArborConfig, WorkflowStatus};
 use crate::pty::PtySession;
@@ -53,7 +53,7 @@ pub struct App {
     config: ArborConfig,
     repo_root: PathBuf,
     drag_state: Option<DragState>,
-    github_cache: GitHubCache,
+    github_cache: SharedGitHubCache,
 }
 
 impl App {
@@ -61,7 +61,7 @@ impl App {
         let worktree_mgr = WorktreeManager::open(repo_path)?;
         let repo_root = worktree_mgr.repo_root().to_path_buf();
         let config = ArborConfig::load(&repo_root);
-        let github_cache = GitHubCache::refresh(&repo_root);
+        let github_cache = SharedGitHubCache::new(&repo_root);
 
         let mut worktrees = worktree_mgr.list()?;
         for wt in &mut worktrees {
@@ -220,7 +220,7 @@ impl App {
                             info_spans.push(Span::styled(format!("#{} ", pr.number), Style::default().fg(color).add_modifier(Modifier::BOLD)));
                             info_spans.push(Span::styled(format!("{} ", state_label), Style::default().fg(color)));
                             info_spans.push(Span::styled("· ", Style::default().fg(Color::DarkGray)));
-                            info_spans.push(Span::styled(&pr.url, Style::default().fg(Color::DarkGray)));
+                            info_spans.push(Span::styled(pr.url.clone(), Style::default().fg(Color::DarkGray)));
                         }
 
                         if wt.ahead > 0 || wt.behind > 0 {
@@ -431,7 +431,7 @@ impl App {
                 }
             }
             Action::Refresh => {
-                self.github_cache = GitHubCache::refresh(&self.repo_root);
+                self.github_cache.force_refresh(&self.repo_root);
                 self.sidebar_state.worktrees = self.worktree_mgr.list()?;
                 self.apply_config();
             }
@@ -460,7 +460,7 @@ impl App {
                         let sn = if short_name.is_empty() { None } else { Some(short_name.clone()) };
                         self.worktree_mgr.create(&branch)?;
                         self.sidebar_state.worktrees = self.worktree_mgr.list()?;
-                        self.github_cache = GitHubCache::refresh(&self.repo_root);
+                        self.github_cache.force_refresh(&self.repo_root);
                         // Persist short_name
                         let entry = self.config.worktrees.entry(branch.clone()).or_default();
                         if let Some(ref name) = sn {
@@ -531,7 +531,7 @@ impl App {
 
                         self.worktree_mgr.delete(&name, false)?;
                         self.sidebar_state.worktrees = self.worktree_mgr.list()?;
-                        self.github_cache = GitHubCache::refresh(&self.repo_root);
+                        self.github_cache.force_refresh(&self.repo_root);
                         self.sidebar_state.selected = 0;
                         self.dialog = Dialog::None;
                         let size = crossterm::terminal::size()?;

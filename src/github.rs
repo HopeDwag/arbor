@@ -2,6 +2,8 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::Path;
 use std::process::Command;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PrState {
@@ -81,5 +83,46 @@ impl GitHubCache {
 
     pub fn get(&self, branch: &str) -> Option<&PrInfo> {
         self.prs.get(branch)
+    }
+}
+
+/// Shared, auto-refreshing GitHub cache. A background thread refreshes every 30s.
+pub struct SharedGitHubCache {
+    inner: Arc<Mutex<GitHubCache>>,
+}
+
+impl SharedGitHubCache {
+    /// Create and start background refresh thread.
+    pub fn new(repo_root: &Path) -> Self {
+        let cache = GitHubCache::refresh(repo_root);
+        let inner = Arc::new(Mutex::new(cache));
+
+        let bg_inner = Arc::clone(&inner);
+        let bg_path = repo_root.to_path_buf();
+        std::thread::spawn(move || {
+            loop {
+                std::thread::sleep(Duration::from_secs(30));
+                let new_cache = GitHubCache::refresh(&bg_path);
+                if let Ok(mut guard) = bg_inner.lock() {
+                    *guard = new_cache;
+                }
+            }
+        });
+
+        Self { inner }
+    }
+
+    /// Get a snapshot of the current cache for reading.
+    pub fn get(&self, branch: &str) -> Option<PrInfo> {
+        let guard = self.inner.lock().ok()?;
+        guard.get(branch).cloned()
+    }
+
+    /// Force an immediate refresh (e.g. on 'r' key).
+    pub fn force_refresh(&self, repo_root: &Path) {
+        let new_cache = GitHubCache::refresh(repo_root);
+        if let Ok(mut guard) = self.inner.lock() {
+            *guard = new_cache;
+        }
     }
 }
