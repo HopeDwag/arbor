@@ -11,25 +11,25 @@ _uat_seed_repo() {
     local repo="$ARBOR_UAT_TMPDIR"
 
     # Initialize repo with a commit on main
-    git init "$repo"
+    git init "$repo" >/dev/null 2>&1
     git -C "$repo" config user.email "uat@test"
     git -C "$repo" config user.name "UAT"
-    git -C "$repo" checkout -b main
-    git -C "$repo" commit --allow-empty -m "initial commit"
+    git -C "$repo" checkout -b main >/dev/null 2>&1
+    git -C "$repo" commit --allow-empty -m "initial commit" >/dev/null 2>&1
 
     # Create branches with commits
-    git -C "$repo" checkout -b feature-auth
-    git -C "$repo" commit --allow-empty -m "auth: add login endpoint"
-    git -C "$repo" checkout main
+    git -C "$repo" checkout -b feature-auth >/dev/null 2>&1
+    git -C "$repo" commit --allow-empty -m "auth: add login endpoint" >/dev/null 2>&1
+    git -C "$repo" checkout main >/dev/null 2>&1
 
-    git -C "$repo" checkout -b feature-api
-    git -C "$repo" commit --allow-empty -m "api: add REST routes"
-    git -C "$repo" checkout main
+    git -C "$repo" checkout -b feature-api >/dev/null 2>&1
+    git -C "$repo" commit --allow-empty -m "api: add REST routes" >/dev/null 2>&1
+    git -C "$repo" checkout main >/dev/null 2>&1
 
     # Create one active worktree
     local wt_dir="${repo}-worktrees"
     mkdir -p "$wt_dir"
-    git -C "$repo" worktree add "$wt_dir/feature-auth" feature-auth
+    git -C "$repo" worktree add "$wt_dir/feature-auth" feature-auth >/dev/null 2>&1
 
     # Write .arbor.json with pre-set statuses
     cat > "$repo/.arbor.json" <<'ARBORJSON'
@@ -72,7 +72,7 @@ uat_start() {
 
     # Launch Arbor in a detached tmux session
     tmux new-session -d -s "$ARBOR_UAT_SESSION" -x 120 -y 40 \
-        "'$arbor_bin' --repo '$repo_path'"
+        "$arbor_bin --repo $repo_path"
 
     # Give it a moment to start
     sleep 1
