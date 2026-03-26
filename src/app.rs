@@ -18,6 +18,7 @@ use crate::worktree::{WorktreeInfo, WorktreeManager};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum DialogField {
+    Repo,
     Branch,
     Name,
 }
@@ -32,8 +33,10 @@ pub enum Dialog {
         archived: Vec<String>,     // branches that can be restored
         selected_archived: Option<usize>,
         repo_root: PathBuf,        // which repo to create in
+        repo_names: Vec<(String, PathBuf)>, // (display_name, root_path) pairs; empty in single-repo mode
+        selected_repo: usize,               // index into repo_names
     },
-    ArchiveConfirm(usize, String), // index, worktree name
+    ArchiveConfirm(usize, String, String), // index, worktree name, display name
 }
 
 struct DragState {
@@ -258,7 +261,7 @@ impl App {
                 // Render header
                 if self.sidebar_state.selected < self.sidebar_state.worktrees.len() {
                     let wt = &self.sidebar_state.worktrees[self.sidebar_state.selected];
-                    let header = Line::from(vec![
+                    let mut header_spans = vec![
                         Span::styled(
                             format!(" {} ", wt.path.display()),
                             Style::default().fg(Color::DarkGray),
@@ -267,7 +270,14 @@ impl App {
                             format!("⎇ {} ", wt.branch),
                             Style::default().fg(Color::Cyan),
                         ),
-                    ]);
+                    ];
+                    if let Some(ref repo_name) = wt.repo_name {
+                        header_spans.push(Span::styled(
+                            format!(" [{}]", repo_name),
+                            Style::default().fg(Color::Yellow),
+                        ));
+                    }
+                    let header = Line::from(header_spans);
                     frame.render_widget(header, right_chunks[0]);
 
                     // Render PR/git info bar
@@ -476,6 +486,28 @@ impl App {
                 let archived = self.managers.get(&repo_root)
                     .map(|mgr| mgr.archived_branches().unwrap_or_default())
                     .unwrap_or_default();
+
+                // Build repo_names list for multi-repo mode
+                let repo_names: Vec<(String, PathBuf)> = if self.multi_repo {
+                    let mut names: Vec<(String, PathBuf)> = self.managers.keys()
+                        .map(|root| {
+                            let display = root
+                                .strip_prefix(&self.scan_root)
+                                .unwrap_or(root)
+                                .to_string_lossy()
+                                .replace('\\', "/");
+                            (display, root.clone())
+                        })
+                        .collect();
+                    names.sort_by(|a, b| a.0.cmp(&b.0));
+                    names
+                } else {
+                    Vec::new()
+                };
+                let selected_repo = repo_names.iter()
+                    .position(|(_, path)| *path == repo_root)
+                    .unwrap_or(0);
+
                 self.dialog = Dialog::CreateInput {
                     input: String::new(),
                     short_name: String::new(),
@@ -483,6 +515,8 @@ impl App {
                     archived,
                     selected_archived: None,
                     repo_root,
+                    repo_names,
+                    selected_repo,
                 };
             }
             Action::SidebarArchive => {
@@ -491,7 +525,12 @@ impl App {
                     let wt = &self.sidebar_state.worktrees[idx];
                     if !wt.is_main {
                         let name = wt.name.clone();
-                        self.dialog = Dialog::ArchiveConfirm(idx, name);
+                        let display_name = if let Some(ref repo) = wt.repo_name {
+                            format!("{}/{}", repo, name)
+                        } else {
+                            name.clone()
+                        };
+                        self.dialog = Dialog::ArchiveConfirm(idx, name, display_name);
                     }
                 }
             }
@@ -533,8 +572,36 @@ impl App {
     pub fn handle_dialog_key(&mut self, key: crossterm::event::KeyEvent) -> Result<bool> {
         use crossterm::event::KeyCode;
 
+        // Handle Repo cycling (Left/Right) separately to avoid borrow conflicts
+        if let Dialog::CreateInput { ref active_field, ref repo_names, ref selected_repo, .. } = self.dialog {
+            if *active_field == DialogField::Repo && !repo_names.is_empty() {
+                let len = repo_names.len();
+                let current = *selected_repo;
+                let new_idx = match key.code {
+                    KeyCode::Left => if current == 0 { len - 1 } else { current - 1 },
+                    KeyCode::Right => (current + 1) % len,
+                    _ => current,
+                };
+                if new_idx != current || matches!(key.code, KeyCode::Left | KeyCode::Right) {
+                    let new_root = repo_names[new_idx].1.clone();
+                    let new_archived = self.managers.get(&new_root)
+                        .map(|mgr| mgr.archived_branches().unwrap_or_default())
+                        .unwrap_or_default();
+                    if let Dialog::CreateInput { ref mut selected_repo, ref mut repo_root, ref mut archived, ref mut selected_archived, .. } = self.dialog {
+                        *selected_repo = new_idx;
+                        *repo_root = new_root;
+                        *archived = new_archived;
+                        *selected_archived = None;
+                    }
+                    if matches!(key.code, KeyCode::Left | KeyCode::Right) {
+                        return Ok(true);
+                    }
+                }
+            }
+        }
+
         match &mut self.dialog {
-            Dialog::CreateInput { ref mut input, ref mut short_name, ref mut active_field, ref archived, ref mut selected_archived, ref repo_root } => {
+            Dialog::CreateInput { ref mut input, ref mut short_name, ref mut active_field, ref mut archived, ref mut selected_archived, ref mut repo_root, ref repo_names, .. } => {
                 match key.code {
                     KeyCode::Enter => {
                         // Use selected archived branch or typed input
@@ -580,8 +647,22 @@ impl App {
                         self.ensure_pty_for_selected(size.1, size.0)?;
                         self.focus = Focus::Terminal;
                     }
-                    KeyCode::Down => { *active_field = DialogField::Name; }
-                    KeyCode::Up => { *active_field = DialogField::Branch; }
+                    KeyCode::Down => {
+                        *active_field = match active_field {
+                            DialogField::Repo => DialogField::Branch,
+                            DialogField::Branch => DialogField::Name,
+                            DialogField::Name => DialogField::Name,
+                        };
+                    }
+                    KeyCode::Up => {
+                        *active_field = match active_field {
+                            DialogField::Repo => DialogField::Repo,
+                            DialogField::Branch => {
+                                if !repo_names.is_empty() { DialogField::Repo } else { DialogField::Branch }
+                            }
+                            DialogField::Name => DialogField::Branch,
+                        };
+                    }
                     KeyCode::Tab if !archived.is_empty() && *active_field == DialogField::Branch => {
                         // Cycle through archived branches
                         *selected_archived = Some(match selected_archived {
@@ -602,6 +683,7 @@ impl App {
                     KeyCode::Char(c) => {
                         *selected_archived = None;
                         match active_field {
+                            DialogField::Repo => {}
                             DialogField::Branch => input.push(c),
                             DialogField::Name => {
                                 if short_name.len() < 20 { short_name.push(c); }
@@ -611,6 +693,7 @@ impl App {
                     KeyCode::Backspace => {
                         *selected_archived = None;
                         match active_field {
+                            DialogField::Repo => {}
                             DialogField::Branch => { input.pop(); }
                             DialogField::Name => { short_name.pop(); }
                         }
@@ -619,7 +702,7 @@ impl App {
                 }
                 Ok(true)
             }
-            Dialog::ArchiveConfirm(_idx, ref name) => {
+            Dialog::ArchiveConfirm(_idx, ref name, _) => {
                 let name = name.clone();
                 match key.code {
                     KeyCode::Char('y') => {

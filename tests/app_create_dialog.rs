@@ -41,6 +41,8 @@ fn test_create_with_short_name_persists() {
         archived: vec![],
         selected_archived: None,
         repo_root: repo_root.clone(),
+        repo_names: vec![],
+        selected_repo: 0,
     };
 
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -63,6 +65,8 @@ fn test_short_name_max_length() {
         archived: vec![],
         selected_archived: None,
         repo_root: dir.path().to_path_buf(),
+        repo_names: vec![],
+        selected_repo: 0,
     };
 
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};

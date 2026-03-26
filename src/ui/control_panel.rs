@@ -104,7 +104,12 @@ pub fn render_control_panel(
                 }
             };
 
-            let display_name = wt.short_name.as_deref().unwrap_or(&wt.branch);
+            let display_name = if let Some(ref repo) = wt.repo_name {
+                let name = wt.short_name.as_deref().unwrap_or(&wt.branch);
+                format!("{}/{}", repo, name)
+            } else {
+                wt.short_name.as_deref().unwrap_or(&wt.branch).to_string()
+            };
             let name_style = if is_selected && focused {
                 Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
             } else if is_selected {
@@ -170,9 +175,11 @@ pub fn render_control_panel(
 
     // Render dialog overlay at bottom of sidebar
     match dialog {
-        Dialog::CreateInput { input, short_name, active_field, archived, selected_archived, .. } => {
+        Dialog::CreateInput { input, short_name, active_field, archived, selected_archived, repo_names, selected_repo, .. } => {
             let has_archived = !archived.is_empty();
-            let dialog_height: u16 = if has_archived { 6 } else { 4 };
+            let has_repo = !repo_names.is_empty();
+            let repo_row_height: u16 = if has_repo { 1 } else { 0 };
+            let dialog_height: u16 = if has_archived { 6 } else { 4 } + repo_row_height;
             let dialog_area = Rect {
                 x: area.x + 1,
                 y: area.bottom().saturating_sub(dialog_height + 1),
@@ -192,6 +199,24 @@ pub fn render_control_panel(
             ));
             buf.set_line(dialog_area.x, row, &title_line, dialog_area.width);
             row += 1;
+
+            // Repo row (multi-repo mode only)
+            if has_repo {
+                let repo_style = if *active_field == DialogField::Repo {
+                    Style::default().fg(Color::Cyan).bg(Color::DarkGray)
+                } else {
+                    Style::default().fg(Color::White).bg(Color::DarkGray)
+                };
+                let repo_display = repo_names.get(*selected_repo)
+                    .map(|(name, _)| name.as_str())
+                    .unwrap_or("");
+                let repo_prompt = Line::from(vec![
+                    Span::styled(" Repo:   ", Style::default().fg(Color::White).bg(Color::DarkGray)),
+                    Span::styled(format!("‹ {} ›", repo_display), repo_style),
+                ]);
+                buf.set_line(dialog_area.x, row, &repo_prompt, dialog_area.width);
+                row += 1;
+            }
 
             let input_style = if selected_archived.is_some() {
                 Style::default().fg(Color::Yellow).bg(Color::DarkGray)
@@ -253,7 +278,8 @@ pub fn render_control_panel(
             ));
             buf.set_line(dialog_area.x, hint_y, &hint, dialog_area.width);
         }
-        Dialog::ArchiveConfirm(_idx, name) => {
+        Dialog::ArchiveConfirm(_idx, _name, display_name) => {
+            let name = display_name;
             let dialog_area = Rect {
                 x: area.x + 1,
                 y: area.bottom().saturating_sub(4),
