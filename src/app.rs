@@ -54,6 +54,7 @@ pub struct App {
     repo_root: PathBuf,
     drag_state: Option<DragState>,
     github_cache: SharedGitHubCache,
+    scroll_offset: usize,
 }
 
 impl App {
@@ -105,6 +106,7 @@ impl App {
             repo_root,
             drag_state: None,
             github_cache,
+            scroll_offset: 0,
         };
         app.sidebar_width = app.calculate_panel_width();
         Ok(app)
@@ -250,6 +252,7 @@ impl App {
                             terminal_area,
                             frame.buffer_mut(),
                             dimmed,
+                            self.scroll_offset,
                         );
 
                         if self.focus == Focus::Terminal {
@@ -289,6 +292,16 @@ impl App {
                                 // Subtract 2 for status bar and header
                                 let terminal_rows = rows.saturating_sub(2);
                                 pty.resize(terminal_rows, terminal_cols)?;
+                            }
+                        }
+                    }
+                    Event::Paste(text) => {
+                        if self.focus == Focus::Terminal {
+                            self.scroll_offset = 0;
+                            if let Some(ref key) = self.active_worktree {
+                                if let Some(pty) = self.pty_sessions.get_mut(key) {
+                                    pty.write(text.as_bytes())?;
+                                }
                             }
                         }
                     }
@@ -418,6 +431,7 @@ impl App {
                 }
             }
             Action::TerminalInput(key) => {
+                self.scroll_offset = 0;
                 if let Some(ref active) = self.active_worktree {
                     if let Some(ref mut pty) = self.pty_sessions.get_mut(active) {
                         let bytes = key_to_bytes(key);
@@ -603,6 +617,16 @@ impl App {
                         }
                     }
                     // If not dragging, it was a click — already handled on Down
+                }
+            }
+            MouseEventKind::ScrollUp => {
+                if self.focus == Focus::Terminal {
+                    self.scroll_offset = self.scroll_offset.saturating_add(3);
+                }
+            }
+            MouseEventKind::ScrollDown => {
+                if self.focus == Focus::Terminal {
+                    self.scroll_offset = self.scroll_offset.saturating_sub(3);
                 }
             }
             _ => {}

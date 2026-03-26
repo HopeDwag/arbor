@@ -51,6 +51,7 @@ fn main() -> Result<()> {
     crossterm::execute!(
         std::io::stdout(),
         crossterm::event::EnableMouseCapture,
+        crossterm::event::EnableBracketedPaste,
         crossterm::cursor::SetCursorStyle::BlinkingBar,
     )?;
     let mut terminal = ratatui::init();
@@ -59,6 +60,7 @@ fn main() -> Result<()> {
     crossterm::execute!(
         std::io::stdout(),
         crossterm::event::DisableMouseCapture,
+        crossterm::event::DisableBracketedPaste,
         crossterm::cursor::SetCursorStyle::DefaultUserShape,
     )?;
     result

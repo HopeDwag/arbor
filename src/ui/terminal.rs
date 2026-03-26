@@ -11,9 +11,11 @@ pub fn render_terminal(
     area: Rect,
     buf: &mut Buffer,
     dimmed: bool,
+    scroll_offset: usize,
 ) -> (u16, u16) {
-    let parser = parser.lock().unwrap();
-    let screen = parser.screen();
+    let mut parser = parser.lock().unwrap();
+    let screen = parser.screen_mut();
+    screen.set_scrollback(scroll_offset);
 
     let rows = area.height.min(screen.size().0);
     let cols = area.width.min(screen.size().1);
