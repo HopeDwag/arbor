@@ -67,7 +67,7 @@ impl App {
         for wt in &mut worktrees {
             if wt.is_main {
                 wt.workflow_status = WorkflowStatus::InProgress;
-            } else if let Some(wt_config) = config.worktrees.get(&wt.name) {
+            } else if let Some(wt_config) = config.worktrees.get(&wt.branch) {
                 wt.workflow_status = wt_config.status;
                 wt.short_name = wt_config.short_name.clone();
             }
@@ -450,16 +450,20 @@ impl App {
                             return Ok(true);
                         };
                         let sn = if short_name.is_empty() { None } else { Some(short_name.clone()) };
-                        self.worktree_mgr.create(&branch)?;
+                        if self.worktree_mgr.create(&branch).is_err() {
+                            // Creation failed (e.g. duplicate branch) — close dialog, no crash
+                            self.dialog = Dialog::None;
+                            return Ok(true);
+                        }
                         self.sidebar_state.worktrees = self.worktree_mgr.list()?;
                         self.github_cache.force_refresh(&self.repo_root);
-                        self.apply_config();
-                        // Persist short_name
+                        // Persist short_name before applying config
                         let entry = self.config.worktrees.entry(branch.clone()).or_default();
                         if let Some(ref name) = sn {
                             entry.short_name = Some(name.clone());
                         }
                         let _ = self.config.save(&self.repo_root);
+                        self.apply_config();
                         // Select the newly created worktree
                         if let Some(idx) = self.sidebar_state.worktrees.iter()
                             .position(|w| w.branch == branch)
@@ -610,7 +614,7 @@ impl App {
         for wt in &mut self.sidebar_state.worktrees {
             if wt.is_main {
                 wt.workflow_status = WorkflowStatus::InProgress;
-            } else if let Some(wt_config) = self.config.worktrees.get(&wt.name) {
+            } else if let Some(wt_config) = self.config.worktrees.get(&wt.branch) {
                 wt.workflow_status = wt_config.status;
                 wt.short_name = wt_config.short_name.clone();
             }
