@@ -15,6 +15,8 @@ pub struct WorktreeInfo {
     pub short_name: Option<String>,
     pub ahead: u32,
     pub behind: u32,
+    pub repo_name: Option<String>,
+    pub repo_root: PathBuf,
 }
 
 pub struct WorktreeManager {
@@ -55,6 +57,8 @@ impl WorktreeManager {
             short_name: None,
             ahead,
             behind,
+            repo_name: None,
+            repo_root: self.repo_root.clone(),
         });
 
         // Additional worktrees
@@ -82,6 +86,8 @@ impl WorktreeManager {
                 short_name: None,
                 ahead,
                 behind,
+                repo_name: None,
+                repo_root: self.repo_root.clone(),
             });
         }
 
