@@ -1,3 +1,4 @@
+pub mod discovery;
 pub mod worktree;
 pub mod pty;
 pub mod ui;
