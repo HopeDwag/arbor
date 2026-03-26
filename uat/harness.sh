@@ -16,3 +16,16 @@ uat_stop() {
     fi
     echo "UAT session stopped."
 }
+
+uat_wait() {
+    local ms="${1:-200}"
+    sleep "$(echo "scale=3; $ms/1000" | bc)"
+}
+
+uat_send() {
+    tmux send-keys -t "$ARBOR_UAT_SESSION" "$@"
+}
+
+uat_capture() {
+    tmux capture-pane -t "$ARBOR_UAT_SESSION" -p
+}
