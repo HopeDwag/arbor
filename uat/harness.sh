@@ -48,6 +48,38 @@ ARBORJSON
     echo "$repo"
 }
 
+uat_start() {
+    local repo_path="${1:-}"
+
+    # Kill any existing session
+    tmux kill-session -t "$ARBOR_UAT_SESSION" 2>/dev/null || true
+
+    # Build Arbor
+    echo "Building Arbor..."
+    cargo build --manifest-path "$ARBOR_ROOT/Cargo.toml" 2>&1
+    local arbor_bin="$ARBOR_ROOT/target/debug/arbor"
+
+    if [[ ! -x "$arbor_bin" ]]; then
+        echo "ERROR: Arbor binary not found at $arbor_bin"
+        return 1
+    fi
+
+    # Seed repo if no path provided
+    if [[ -z "$repo_path" ]]; then
+        repo_path="$(_uat_seed_repo)"
+        echo "Seeded test repo at $repo_path"
+    fi
+
+    # Launch Arbor in a detached tmux session
+    tmux new-session -d -s "$ARBOR_UAT_SESSION" -x 120 -y 40 \
+        "'$arbor_bin' --repo '$repo_path'"
+
+    # Give it a moment to start
+    sleep 1
+
+    echo "UAT session started. Use uat_capture, uat_send, uat_stop."
+}
+
 uat_stop() {
     tmux kill-session -t "$ARBOR_UAT_SESSION" 2>/dev/null || true
     if [[ -n "$ARBOR_UAT_TMPDIR" && "$ARBOR_UAT_TMPDIR" == /tmp/arbor-uat-* ]]; then
