@@ -6,6 +6,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Arbor is a TUI (terminal user interface) git worktree manager written in Rust. It provides a split-pane interface with a sidebar listing worktrees and an embedded terminal (PTY) per worktree. Users can create, select, and archive worktrees without leaving the app. Worktrees are stored in a sibling directory named `<repo>-worktrees/`.
 
+## Install
+
+```bash
+cargo install --path .         # Install to ~/.cargo/bin/arbor
+arbor                          # Run from any git repo
+arbor --repo /path/to/repo     # Run against a specific repo
+```
+
+Requires `~/.cargo/bin` in your PATH. Add to `~/.zshrc`:
+```bash
+export PATH="$HOME/.cargo/bin:$PATH"
+```
+
 ## Commands
 
 ```bash
