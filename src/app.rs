@@ -14,7 +14,7 @@ use crate::persistence::{ArborConfig, WorkflowStatus};
 use crate::pty::PtySession;
 use crate::ui;
 use crate::ui::ControlPanelState;
-use crate::worktree::WorktreeManager;
+use crate::worktree::{WorktreeInfo, WorktreeManager};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum DialogField {
@@ -31,6 +31,7 @@ pub enum Dialog {
         active_field: DialogField,
         archived: Vec<String>,     // branches that can be restored
         selected_archived: Option<usize>,
+        repo_root: PathBuf,        // which repo to create in
     },
     ArchiveConfirm(usize, String), // index, worktree name
 }
@@ -41,7 +42,7 @@ struct DragState {
 }
 
 pub struct App {
-    worktree_mgr: WorktreeManager,
+    managers: HashMap<PathBuf, WorktreeManager>,
     pty_sessions: HashMap<PathBuf, PtySession>,
     active_worktree: Option<PathBuf>,
     pub focus: Focus,
@@ -50,66 +51,126 @@ pub struct App {
     sidebar_width: u16,
     spinner_frame: u8,
     should_quit: bool,
-    config: ArborConfig,
-    repo_root: PathBuf,
+    configs: HashMap<PathBuf, ArborConfig>,
+    scan_root: PathBuf,
+    multi_repo: bool,
     drag_state: Option<DragState>,
-    github_cache: SharedGitHubCache,
+    github_caches: HashMap<PathBuf, SharedGitHubCache>,
     scroll_offset: usize,
 }
 
 impl App {
     pub fn new(repo_path: &std::path::Path) -> Result<Self> {
-        let worktree_mgr = WorktreeManager::open(repo_path)?;
-        let repo_root = worktree_mgr.repo_root().to_path_buf();
-        let config = ArborConfig::load(&repo_root);
-        let github_cache = SharedGitHubCache::new(&repo_root);
-
-        let mut worktrees = worktree_mgr.list()?;
-        for wt in &mut worktrees {
-            if wt.is_main {
-                wt.workflow_status = WorkflowStatus::InProgress;
-            } else if let Some(wt_config) = config.worktrees.get(&wt.branch) {
-                wt.workflow_status = wt_config.status;
-                wt.short_name = wt_config.short_name.clone();
-            }
-            // Auto-status from PR state (overrides manual status)
-            if !wt.is_main {
-                if let Some(pr) = github_cache.get(&wt.branch) {
-                    match pr.state {
-                        crate::github::PrState::Open => wt.workflow_status = WorkflowStatus::InReview,
-                        crate::github::PrState::Merged => wt.workflow_status = WorkflowStatus::Done,
-                        _ => {}
+        let (managers, multi_repo, scan_root) = if git2::Repository::discover(repo_path).is_ok() {
+            // Single-repo mode
+            let mgr = WorktreeManager::open(repo_path)?;
+            let root = mgr.repo_root().to_path_buf();
+            let mut map = HashMap::new();
+            map.insert(root.clone(), mgr);
+            (map, false, root)
+        } else {
+            // Multi-repo mode
+            let discovered = crate::discovery::discover_repos(repo_path)?;
+            let mut map = HashMap::new();
+            for repo in discovered {
+                match WorktreeManager::open(&repo.path) {
+                    Ok(mgr) => {
+                        let root = mgr.repo_root().to_path_buf();
+                        map.insert(root, mgr);
+                    }
+                    Err(e) => {
+                        eprintln!("arbor: skipping {}: {}", repo.name, e);
                     }
                 }
             }
-        }
-
-        let sidebar_state = ControlPanelState {
-            selected: 0,
-            worktrees,
-            show_plus: true,
-            row_to_flat_idx: Vec::new(),
-            group_regions: Vec::new(),
+            if map.is_empty() {
+                anyhow::bail!("No valid git repositories found");
+            }
+            let canonical = repo_path.canonicalize().unwrap_or_else(|_| repo_path.to_path_buf());
+            (map, true, canonical)
         };
 
+        // Build per-repo configs and github caches
+        let mut configs = HashMap::new();
+        let mut github_caches = HashMap::new();
+        for root in managers.keys() {
+            configs.insert(root.clone(), ArborConfig::load(root));
+            github_caches.insert(root.clone(), SharedGitHubCache::new(root));
+        }
+
         let mut app = Self {
-            worktree_mgr,
+            managers,
             pty_sessions: HashMap::new(),
             active_worktree: None,
             focus: Focus::Terminal,
-            sidebar_state,
+            sidebar_state: ControlPanelState {
+                selected: 0,
+                worktrees: Vec::new(),
+                show_plus: true,
+                row_to_flat_idx: Vec::new(),
+                group_regions: Vec::new(),
+            },
             dialog: Dialog::None,
             sidebar_width: 30,
             spinner_frame: 0,
             should_quit: false,
-            config,
-            repo_root,
+            configs,
+            scan_root,
+            multi_repo,
             drag_state: None,
-            github_cache,
+            github_caches,
             scroll_offset: 0,
         };
+        app.sidebar_state.worktrees = app.build_worktree_list()?;
         app.sidebar_width = app.calculate_panel_width();
         Ok(app)
+    }
+
+    fn build_worktree_list(&self) -> Result<Vec<WorktreeInfo>> {
+        let mut all = Vec::new();
+        for (root, mgr) in &self.managers {
+            let mut worktrees = mgr.list()?;
+            let config = self.configs.get(root);
+            let github_cache = self.github_caches.get(root);
+
+            // Tag with repo_name in multi-repo mode
+            if self.multi_repo {
+                let repo_name = root
+                    .strip_prefix(&self.scan_root)
+                    .unwrap_or(root)
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                for wt in &mut worktrees {
+                    wt.repo_name = Some(repo_name.clone());
+                }
+            }
+
+            // Apply config and PR auto-status
+            for wt in &mut worktrees {
+                if wt.is_main {
+                    wt.workflow_status = WorkflowStatus::InProgress;
+                } else if let Some(cfg) = config {
+                    if let Some(wt_config) = cfg.worktrees.get(&wt.branch) {
+                        wt.workflow_status = wt_config.status;
+                        wt.short_name = wt_config.short_name.clone();
+                    }
+                }
+                if !wt.is_main {
+                    if let Some(cache) = github_cache {
+                        if let Some(pr) = cache.get(&wt.branch) {
+                            match pr.state {
+                                crate::github::PrState::Open => wt.workflow_status = WorkflowStatus::InReview,
+                                crate::github::PrState::Merged => wt.workflow_status = WorkflowStatus::Done,
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+            }
+
+            all.extend(worktrees);
+        }
+        Ok(all)
     }
 
     pub fn panel_width(&self) -> u16 {
@@ -121,11 +182,17 @@ impl App {
             .map(|wt| {
                 let display = wt.short_name.as_deref().unwrap_or(&wt.branch);
                 let mut len = display.len();
+                // Account for repo name prefix in multi-repo mode
+                if let Some(ref rn) = wt.repo_name {
+                    len += rn.len() + 1; // "repo/branch"
+                }
                 // Account for ahead/behind indicators (e.g. " ↑3 ↓2")
                 if wt.ahead > 0 { len += 3; }
                 if wt.behind > 0 { len += 3; }
                 // Account for PR badge (e.g. " #123")
-                if self.github_cache.get(&wt.branch).is_some() { len += 7; }
+                if let Some(cache) = self.github_caches.get(&wt.repo_root) {
+                    if cache.get(&wt.branch).is_some() { len += 7; }
+                }
                 len
             })
             .max()
@@ -173,7 +240,9 @@ impl App {
                 let has_pr = self.sidebar_state.selected < self.sidebar_state.worktrees.len()
                     && {
                         let wt = &self.sidebar_state.worktrees[self.sidebar_state.selected];
-                        self.github_cache.get(&wt.branch).is_some() || wt.ahead > 0 || wt.behind > 0
+                        let has_gh = self.github_caches.get(&wt.repo_root)
+                            .and_then(|c| c.get(&wt.branch)).is_some();
+                        has_gh || wt.ahead > 0 || wt.behind > 0
                     };
                 let info_bar_height = if has_pr { 1 } else { 0 };
 
@@ -205,7 +274,7 @@ impl App {
                     if has_pr {
                         let mut info_spans: Vec<Span> = vec![Span::raw(" ")];
 
-                        if let Some(pr) = self.github_cache.get(&wt.branch) {
+                        if let Some(pr) = self.github_caches.get(&wt.repo_root).and_then(|c| c.get(&wt.branch)) {
                             let (icon, color) = match pr.state {
                                 crate::github::PrState::Open => ("\u{e728}", Color::Green),
                                 crate::github::PrState::Draft => ("\u{e728}", Color::Yellow),
@@ -397,13 +466,23 @@ impl App {
                 }
             }
             Action::SidebarCreate => {
-                let archived = self.worktree_mgr.archived_branches().unwrap_or_default();
+                let repo_root = if self.sidebar_state.selected < self.sidebar_state.worktrees.len() {
+                    self.sidebar_state.worktrees[self.sidebar_state.selected].repo_root.clone()
+                } else if let Some(root) = self.managers.keys().next() {
+                    root.clone()
+                } else {
+                    return Ok(());
+                };
+                let archived = self.managers.get(&repo_root)
+                    .map(|mgr| mgr.archived_branches().unwrap_or_default())
+                    .unwrap_or_default();
                 self.dialog = Dialog::CreateInput {
                     input: String::new(),
                     short_name: String::new(),
                     active_field: DialogField::Branch,
                     archived,
                     selected_archived: None,
+                    repo_root,
                 };
             }
             Action::SidebarArchive => {
@@ -422,11 +501,14 @@ impl App {
                     let wt = &mut self.sidebar_state.worktrees[idx];
                     if !wt.is_main {
                         wt.workflow_status = wt.workflow_status.next();
-                        let entry = self.config.worktrees
-                            .entry(wt.name.clone())
-                            .or_default();
-                        entry.status = wt.workflow_status;
-                        let _ = self.config.save(&self.repo_root);
+                        let repo_root = wt.repo_root.clone();
+                        let branch = wt.branch.clone();
+                        let status = wt.workflow_status;
+                        if let Some(config) = self.configs.get_mut(&repo_root) {
+                            let entry = config.worktrees.entry(branch).or_default();
+                            entry.status = status;
+                            let _ = config.save(&repo_root);
+                        }
                     }
                 }
             }
@@ -452,7 +534,7 @@ impl App {
         use crossterm::event::KeyCode;
 
         match &mut self.dialog {
-            Dialog::CreateInput { ref mut input, ref mut short_name, ref mut active_field, ref archived, ref mut selected_archived } => {
+            Dialog::CreateInput { ref mut input, ref mut short_name, ref mut active_field, ref archived, ref mut selected_archived, ref repo_root } => {
                 match key.code {
                     KeyCode::Enter => {
                         // Use selected archived branch or typed input
@@ -464,19 +546,28 @@ impl App {
                             return Ok(true);
                         };
                         let sn = if short_name.is_empty() { None } else { Some(short_name.clone()) };
-                        if self.worktree_mgr.create(&branch).is_err() {
-                            // Creation failed (e.g. duplicate branch) — close dialog, no crash
+                        let repo_root = repo_root.clone();
+                        if let Some(mgr) = self.managers.get(&repo_root) {
+                            if mgr.create(&branch).is_err() {
+                                self.dialog = Dialog::None;
+                                return Ok(true);
+                            }
+                        } else {
                             self.dialog = Dialog::None;
                             return Ok(true);
                         }
-                        self.sidebar_state.worktrees = self.worktree_mgr.list()?;
-                        self.github_cache.force_refresh(&self.repo_root);
-                        // Persist short_name before applying config
-                        let entry = self.config.worktrees.entry(branch.clone()).or_default();
-                        if let Some(ref name) = sn {
-                            entry.short_name = Some(name.clone());
+                        self.sidebar_state.worktrees = self.build_worktree_list()?;
+                        if let Some(cache) = self.github_caches.get(&repo_root) {
+                            cache.force_refresh(&repo_root);
                         }
-                        let _ = self.config.save(&self.repo_root);
+                        // Persist short_name before applying config
+                        if let Some(config) = self.configs.get_mut(&repo_root) {
+                            let entry = config.worktrees.entry(branch.clone()).or_default();
+                            if let Some(ref name) = sn {
+                                entry.short_name = Some(name.clone());
+                            }
+                            let _ = config.save(&repo_root);
+                        }
                         self.apply_config();
                         // Select the newly created worktree
                         if let Some(idx) = self.sidebar_state.worktrees.iter()
@@ -535,14 +626,19 @@ impl App {
                         // Remove PTY session for this worktree (dropping it kills the child)
                         let wt = &self.sidebar_state.worktrees[self.sidebar_state.selected];
                         let key = wt.path.clone();
+                        let repo_root = wt.repo_root.clone();
                         self.pty_sessions.remove(&key);
                         if self.active_worktree.as_ref() == Some(&key) {
                             self.active_worktree = None;
                         }
 
-                        self.worktree_mgr.delete(&name, false)?;
-                        self.sidebar_state.worktrees = self.worktree_mgr.list()?;
-                        self.github_cache.force_refresh(&self.repo_root);
+                        if let Some(mgr) = self.managers.get(&repo_root) {
+                            mgr.delete(&name, false)?;
+                        }
+                        self.sidebar_state.worktrees = self.build_worktree_list()?;
+                        if let Some(cache) = self.github_caches.get(&repo_root) {
+                            cache.force_refresh(&repo_root);
+                        }
                         self.apply_config();
                         self.sidebar_state.selected = 0;
                         self.dialog = Dialog::None;
@@ -607,11 +703,13 @@ impl App {
                                 let wt = &mut self.sidebar_state.worktrees[idx];
                                 if !wt.is_main && wt.workflow_status != new_status {
                                     wt.workflow_status = new_status;
-                                    let entry = self.config.worktrees
-                                        .entry(wt.name.clone())
-                                        .or_default();
-                                    entry.status = new_status;
-                                    let _ = self.config.save(&self.repo_root);
+                                    let repo_root = wt.repo_root.clone();
+                                    let branch = wt.branch.clone();
+                                    if let Some(config) = self.configs.get_mut(&repo_root) {
+                                        let entry = config.worktrees.entry(branch).or_default();
+                                        entry.status = new_status;
+                                        let _ = config.save(&repo_root);
+                                    }
                                 }
                             }
                         }
@@ -638,17 +736,21 @@ impl App {
         for wt in &mut self.sidebar_state.worktrees {
             if wt.is_main {
                 wt.workflow_status = WorkflowStatus::InProgress;
-            } else if let Some(wt_config) = self.config.worktrees.get(&wt.branch) {
-                wt.workflow_status = wt_config.status;
-                wt.short_name = wt_config.short_name.clone();
+            } else if let Some(config) = self.configs.get(&wt.repo_root) {
+                if let Some(wt_config) = config.worktrees.get(&wt.branch) {
+                    wt.workflow_status = wt_config.status;
+                    wt.short_name = wt_config.short_name.clone();
+                }
             }
             // Auto-status from PR state (overrides manual status)
             if !wt.is_main {
-                if let Some(pr) = self.github_cache.get(&wt.branch) {
-                    match pr.state {
-                        crate::github::PrState::Open => wt.workflow_status = WorkflowStatus::InReview,
-                        crate::github::PrState::Merged => wt.workflow_status = WorkflowStatus::Done,
-                        _ => {}
+                if let Some(cache) = self.github_caches.get(&wt.repo_root) {
+                    if let Some(pr) = cache.get(&wt.branch) {
+                        match pr.state {
+                            crate::github::PrState::Open => wt.workflow_status = WorkflowStatus::InReview,
+                            crate::github::PrState::Merged => wt.workflow_status = WorkflowStatus::Done,
+                            _ => {}
+                        }
                     }
                 }
             }

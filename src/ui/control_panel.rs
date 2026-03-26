@@ -170,7 +170,7 @@ pub fn render_control_panel(
 
     // Render dialog overlay at bottom of sidebar
     match dialog {
-        Dialog::CreateInput { input, short_name, active_field, archived, selected_archived } => {
+        Dialog::CreateInput { input, short_name, active_field, archived, selected_archived, .. } => {
             let has_archived = !archived.is_empty();
             let dialog_height: u16 = if has_archived { 6 } else { 4 };
             let dialog_area = Rect {
