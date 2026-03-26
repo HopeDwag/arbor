@@ -132,7 +132,16 @@ impl App {
     fn build_worktree_list(&self) -> Result<Vec<WorktreeInfo>> {
         let mut all = Vec::new();
         for (root, mgr) in &self.managers {
-            let mut worktrees = mgr.list()?;
+            let mut worktrees = match mgr.list() {
+                Ok(wts) => wts,
+                Err(e) => {
+                    if self.multi_repo {
+                        eprintln!("arbor: skipping {}: {}", root.display(), e);
+                        continue;
+                    }
+                    return Err(e);
+                }
+            };
             let config = self.configs.get(root);
             let github_cache = self.github_caches.get(root);
 
