@@ -47,8 +47,13 @@ impl WorktreeManager {
         let main_status = status::check_status(&self.repo_root).ok();
         let (ahead, behind) = status::ahead_behind(&self.repo_root);
 
+        let main_name = self.repo_root
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "main".to_string());
+
         result.push(WorktreeInfo {
-            name: main_branch.clone(),
+            name: main_name,
             branch: main_branch,
             path: self.repo_root.clone(),
             is_main: true,
