@@ -2,6 +2,7 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::Path;
 use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -90,6 +91,7 @@ impl GitHubCache {
 /// Shared, auto-refreshing GitHub cache. A background thread refreshes every 30s.
 pub struct SharedGitHubCache {
     inner: Arc<Mutex<GitHubCache>>,
+    refreshing: Arc<AtomicBool>,
 }
 
 impl SharedGitHubCache {
@@ -97,25 +99,31 @@ impl SharedGitHubCache {
     /// Starts with empty cache — first refresh happens in background, not blocking startup.
     pub fn new(repo_root: &Path) -> Self {
         let inner = Arc::new(Mutex::new(GitHubCache::default()));
+        let refreshing = Arc::new(AtomicBool::new(false));
 
         let bg_inner = Arc::clone(&inner);
+        let bg_refreshing = Arc::clone(&refreshing);
         let bg_path = repo_root.to_path_buf();
         std::thread::spawn(move || {
             // First refresh happens immediately in background
+            bg_refreshing.store(true, Ordering::SeqCst);
             let new_cache = GitHubCache::refresh(&bg_path);
             if let Ok(mut guard) = bg_inner.lock() {
                 *guard = new_cache;
             }
+            bg_refreshing.store(false, Ordering::SeqCst);
             loop {
                 std::thread::sleep(Duration::from_secs(30));
+                bg_refreshing.store(true, Ordering::SeqCst);
                 let new_cache = GitHubCache::refresh(&bg_path);
                 if let Ok(mut guard) = bg_inner.lock() {
                     *guard = new_cache;
                 }
+                bg_refreshing.store(false, Ordering::SeqCst);
             }
         });
 
-        Self { inner }
+        Self { inner, refreshing }
     }
 
     /// Get a snapshot of the current cache for reading.
@@ -125,14 +133,21 @@ impl SharedGitHubCache {
     }
 
     /// Trigger a background refresh (non-blocking).
+    /// Skips if a refresh is already in progress to prevent unbounded thread spawning.
     pub fn force_refresh(&self, repo_root: &Path) {
+        if self.refreshing.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
+            return; // Already refreshing, skip
+        }
+
         let inner = Arc::clone(&self.inner);
+        let refreshing = Arc::clone(&self.refreshing);
         let path = repo_root.to_path_buf();
         std::thread::spawn(move || {
             let new_cache = GitHubCache::refresh(&path);
             if let Ok(mut guard) = inner.lock() {
                 *guard = new_cache;
             }
+            refreshing.store(false, Ordering::SeqCst);
         });
     }
 }
