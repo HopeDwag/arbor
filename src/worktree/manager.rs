@@ -21,6 +21,8 @@ pub struct WorktreeInfo {
     /// Eagerly computed commit age for sort ordering.
     /// Populated during `list()` so sorting works before lazy status check.
     pub last_commit_age_secs: u64,
+    pub commit_message: Option<String>,
+    pub is_dirty: bool,
 }
 
 pub struct WorktreeManager {
@@ -45,6 +47,18 @@ fn commit_age_secs(repo: &Repository) -> u64 {
         .map(|d| d.as_secs())
         .unwrap_or(0);
     now.saturating_sub(commit_time)
+}
+
+fn commit_summary(repo: &Repository) -> Option<String> {
+    let head = repo.head().ok()?;
+    let commit = head.peel_to_commit().ok()?;
+    commit.summary().map(String::from)
+}
+
+fn is_repo_dirty(repo: &Repository) -> bool {
+    repo.statuses(None)
+        .map(|s| !s.is_empty())
+        .unwrap_or(false)
 }
 
 impl WorktreeManager {
@@ -86,6 +100,8 @@ impl WorktreeManager {
             repo_name: None,
             repo_root: self.repo_root.clone(),
             last_commit_age_secs: commit_age_secs(&self.repo),
+            commit_message: commit_summary(&self.repo),
+            is_dirty: is_repo_dirty(&self.repo),
         });
 
         // Additional worktrees
@@ -115,6 +131,8 @@ impl WorktreeManager {
                 repo_name: None,
                 repo_root: self.repo_root.clone(),
                 last_commit_age_secs: age,
+                commit_message: commit_summary(&wt_repo),
+                is_dirty: is_repo_dirty(&wt_repo),
             });
         }
 

@@ -148,3 +148,28 @@ fn test_worktrees_sorted_by_most_recent_commit_first() {
             "Expected ages in ascending order (most recent first), got {:?}", non_main_ages);
     }
 }
+
+#[test]
+fn test_worktree_info_has_commit_message() {
+    let dir = common::init_test_repo();
+    let manager = arbor::worktree::WorktreeManager::open(dir.path()).unwrap();
+    let worktrees = manager.list().unwrap();
+    assert_eq!(worktrees[0].commit_message.as_deref(), Some("init"));
+}
+
+#[test]
+fn test_worktree_info_has_is_dirty() {
+    let dir = common::init_test_repo();
+    let manager = arbor::worktree::WorktreeManager::open(dir.path()).unwrap();
+    let worktrees = manager.list().unwrap();
+    assert!(!worktrees[0].is_dirty);
+}
+
+#[test]
+fn test_worktree_dirty_when_file_added() {
+    let dir = common::init_test_repo();
+    std::fs::write(dir.path().join("dirty.txt"), "hello").unwrap();
+    let manager = arbor::worktree::WorktreeManager::open(dir.path()).unwrap();
+    let worktrees = manager.list().unwrap();
+    assert!(worktrees[0].is_dirty);
+}
