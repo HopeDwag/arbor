@@ -17,6 +17,8 @@ pub enum Action {
     SidebarCreate,
     SidebarArchive,
     StatusCycle,
+    Filter,
+    OpenPR,
     TerminalInput(KeyEvent),
     Quit,
     None,
@@ -37,14 +39,23 @@ pub fn handle_key(key: KeyEvent, focus: &Focus) -> Action {
         return Action::ToggleFocus;
     }
 
+    // Ctrl-g opens PR in browser (sidebar) or passes through (terminal)
+    if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('g') {
+        return match focus {
+            Focus::Sidebar => Action::OpenPR,
+            Focus::Terminal => Action::TerminalInput(key),
+        };
+    }
+
     match focus {
         Focus::Sidebar => match key.code {
-            KeyCode::Up | KeyCode::Char('k') => Action::SidebarUp,
-            KeyCode::Down | KeyCode::Char('j') => Action::SidebarDown,
+            KeyCode::Up => Action::SidebarUp,
+            KeyCode::Down => Action::SidebarDown,
             KeyCode::Enter => Action::SidebarSelect,
             KeyCode::Char('n') => Action::SidebarCreate,
             KeyCode::Char('a') => Action::SidebarArchive,
             KeyCode::Char('s') => Action::StatusCycle,
+            KeyCode::Char('/') => Action::Filter,
             KeyCode::Esc | KeyCode::Char('q') => Action::Quit,
             _ => Action::None,
         },
