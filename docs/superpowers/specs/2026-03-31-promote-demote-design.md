@@ -105,6 +105,27 @@ All operations use `git2` (no shelling out):
 - `repo.stash_pop()` — apply and drop stash (with conflict detection via `CheckoutBuilder`)
 - `repo.statuses()` — check if dirty
 
+### Stash identity
+
+Stashes are LIFO — the most recently created stash is always at index 0. Since promote/demote creates a stash and immediately pops it (in the same operation, before the user can create other stashes), always use index 0. No need to search by message or store the index.
+
+The tagged message (e.g. `arbor-promote:feature-auth`) is for human readability in `git stash list`, not for lookup.
+
+### Branch sharing constraint
+
+Git does not allow two worktrees to have the same branch checked out. This affects demote: main has the promoted branch, and the sidecar's HEAD also points to it. To handle this:
+
+1. On promote, after checking out the target branch in main, **detach the sidecar's HEAD** (`git2::Repository::set_head_detached()` on the sidecar repo). The sidecar is inactive anyway — detaching avoids the conflict.
+2. On demote, before checking out the promoted branch back on the sidecar, **checkout the previous branch in main first** (which frees up the promoted branch for the sidecar).
+
+### Sidecar operations
+
+When popping a stash "onto the sidecar" during demote:
+1. Open a `git2::Repository` against the sidecar path
+2. Checkout the promoted branch there (now free since main released it)
+3. Call `stash_pop(0)` on that repository to restore dirty changes
+4. If conflicts, leave stashed and notify the user
+
 ## Scope
 
 - Single-repo mode: works as described
