@@ -143,7 +143,6 @@ impl App {
                 }
             };
             let config = self.configs.get(root);
-            let github_cache = self.github_caches.get(root);
 
             // Tag with repo_name in multi-repo mode
             if self.multi_repo {
@@ -167,17 +166,7 @@ impl App {
                         wt.short_name = wt_config.short_name.clone();
                     }
                 }
-                if !wt.is_main {
-                    if let Some(cache) = github_cache {
-                        if let Some(pr) = cache.get(&wt.branch) {
-                            match pr.state {
-                                crate::github::PrState::Open => wt.workflow_status = WorkflowStatus::InReview,
-                                crate::github::PrState::Merged => wt.workflow_status = WorkflowStatus::Done,
-                                _ => {}
-                            }
-                        }
-                    }
-                }
+                Self::apply_pr_auto_status(&self.github_caches, wt);
             }
 
             all.extend(worktrees);
@@ -335,15 +324,17 @@ impl App {
                         let screen_arc = pty.screen();
                         let dimmed = self.focus == Focus::Sidebar;
                         let terminal_area = right_chunks[2];
-                        let (cursor_row, cursor_col) = ui::render_terminal(
+                        let (cursor_row, cursor_col, clamped) = ui::render_terminal(
                             &screen_arc,
                             terminal_area,
                             frame.buffer_mut(),
                             dimmed,
                             self.scroll_offset,
                         );
+                        // Sync our offset to the clamped value so we don't overshoot
+                        self.scroll_offset = clamped;
 
-                        if self.focus == Focus::Terminal {
+                        if self.focus == Focus::Terminal && self.scroll_offset == 0 {
                             let cursor_x = terminal_area.x + cursor_col;
                             let cursor_y = terminal_area.y + cursor_row;
                             if cursor_x < terminal_area.right() && cursor_y < terminal_area.bottom() {
@@ -359,6 +350,15 @@ impl App {
             })?;
 
             self.spinner_frame = self.spinner_frame.wrapping_add(1);
+
+            // Respawn shell if the active PTY's child process has exited
+            if let Some(ref key) = self.active_worktree {
+                if self.pty_sessions.get(key).is_some_and(|p| p.has_exited()) {
+                    self.pty_sessions.remove(key);
+                    let size = terminal.size()?;
+                    self.ensure_pty_for_selected(size.height, size.width)?;
+                }
+            }
 
             if event::poll(Duration::from_millis(16))? {
                 match event::read()? {
@@ -384,7 +384,9 @@ impl App {
                         }
                     }
                     Event::Paste(text) => {
-                        if self.focus == Focus::Terminal {
+                        if !self.handle_dialog_paste(&text)
+                            && self.focus == Focus::Terminal
+                        {
                             self.scroll_offset = 0;
                             if let Some(ref key) = self.active_worktree {
                                 if let Some(pty) = self.pty_sessions.get_mut(key) {
@@ -746,6 +748,28 @@ impl App {
         }
     }
 
+    /// Handle paste events for active dialogs. Returns true if the dialog consumed the paste.
+    fn handle_dialog_paste(&mut self, text: &str) -> bool {
+        match &mut self.dialog {
+            Dialog::CreateInput { ref mut input, ref mut short_name, ref active_field, ref mut selected_archived, .. } => {
+                // Strip newlines — branch names can't contain them
+                let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
+                *selected_archived = None;
+                match active_field {
+                    DialogField::Repo => {} // read-only
+                    DialogField::Branch => input.push_str(&clean),
+                    DialogField::Name => {
+                        let remaining = 20usize.saturating_sub(short_name.len());
+                        let truncated: String = clean.chars().take(remaining).collect();
+                        short_name.push_str(&truncated);
+                    }
+                }
+                true
+            }
+            _ => false,
+        }
+    }
+
     pub fn handle_mouse(&mut self, mouse: crossterm::event::MouseEvent) -> Result<()> {
         match mouse.kind {
             MouseEventKind::Moved => {}
@@ -834,23 +858,36 @@ impl App {
                     wt.short_name = wt_config.short_name.clone();
                 }
             }
-            // Auto-status from PR state (overrides manual status)
-            if !wt.is_main {
-                if let Some(cache) = self.github_caches.get(&wt.repo_root) {
-                    if let Some(pr) = cache.get(&wt.branch) {
-                        match pr.state {
-                            crate::github::PrState::Open => wt.workflow_status = WorkflowStatus::InReview,
-                            crate::github::PrState::Merged => wt.workflow_status = WorkflowStatus::Done,
-                            _ => {}
-                        }
-                    }
-                }
-            }
+            Self::apply_pr_auto_status(&self.github_caches, wt);
         }
         self.sidebar_width = self.calculate_panel_width();
     }
 
+    /// Override workflow status based on PR state (open -> InReview, merged -> Done).
+    fn apply_pr_auto_status(
+        github_caches: &HashMap<PathBuf, SharedGitHubCache>,
+        wt: &mut WorktreeInfo,
+    ) {
+        if !wt.is_main {
+            if let Some(cache) = github_caches.get(&wt.repo_root) {
+                if let Some(pr) = cache.get(&wt.branch) {
+                    match pr.state {
+                        crate::github::PrState::Open => wt.workflow_status = WorkflowStatus::InReview,
+                        crate::github::PrState::Merged => wt.workflow_status = WorkflowStatus::Done,
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+
     fn ensure_pty_for_selected(&mut self, rows: u16, cols: u16) -> Result<()> {
+        if self.sidebar_state.worktrees.is_empty()
+            || self.sidebar_state.selected >= self.sidebar_state.worktrees.len()
+        {
+            return Ok(());
+        }
+
         // Lazily compute status and ahead/behind for the selected worktree
         {
             let wt = &mut self.sidebar_state.worktrees[self.sidebar_state.selected];
