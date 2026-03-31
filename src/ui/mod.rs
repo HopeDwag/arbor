@@ -1,5 +1,6 @@
 mod control_panel;
 mod terminal;
+pub mod theme;
 
 pub use control_panel::render_control_panel;
 pub use control_panel::ControlPanelState;
