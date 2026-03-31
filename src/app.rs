@@ -1,6 +1,6 @@
 use anyhow::Result;
 use crossterm::event::{self, Event, KeyCode, MouseEventKind};
-use ratatui::layout::{Constraint, Direction, Layout};
+use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::DefaultTerminal;
@@ -254,85 +254,82 @@ impl App {
                     &pty_last_outputs,
                 );
 
-                // Split right panel into header + info bar + terminal
-                let has_pr = self.sidebar_state.selected < self.sidebar_state.worktrees.len()
-                    && {
-                        let wt = &self.sidebar_state.worktrees[self.sidebar_state.selected];
-                        let has_gh = self.github_caches.get(&wt.repo_root)
-                            .and_then(|c| c.get(&wt.branch)).is_some();
-                        has_gh || wt.ahead > 0 || wt.behind > 0
-                    };
-                let info_bar_height = if has_pr { 1 } else { 0 };
-
+                // Right pane: detail bar (2 rows) + terminal
                 let right_chunks = Layout::default()
                     .direction(Direction::Vertical)
                     .constraints([
-                        Constraint::Length(1),
-                        Constraint::Length(info_bar_height),
+                        Constraint::Length(2),
                         Constraint::Min(1),
                     ])
                     .split(chunks[1]);
 
-                // Render header
+                // Render detail bar
                 if self.sidebar_state.selected < self.sidebar_state.worktrees.len() {
                     let wt = &self.sidebar_state.worktrees[self.sidebar_state.selected];
-                    let mut header_spans = vec![
+
+                    // Row 1: branch + status + PR + sync
+                    let mut row1_spans: Vec<Span> = vec![
+                        Span::styled(
+                            format!(" \u{2387} {} ", wt.branch),
+                            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                        ),
+                    ];
+
+                    let status_label = match wt.workflow_status {
+                        WorkflowStatus::Queued => "QUEUED",
+                        WorkflowStatus::InProgress => "IN PROGRESS",
+                        WorkflowStatus::InReview => "IN REVIEW",
+                        WorkflowStatus::Done => "DONE",
+                    };
+                    row1_spans.push(Span::styled(
+                        format!(" {} ", status_label),
+                        Style::default().fg(Color::DarkGray),
+                    ));
+
+                    if let Some(pr) = self.github_caches.get(&wt.repo_root).and_then(|c| c.get(&wt.branch)) {
+                        let (state_label, color) = match pr.state {
+                            crate::github::PrState::Open => ("Open", Color::Green),
+                            crate::github::PrState::Draft => ("Draft", Color::Yellow),
+                            crate::github::PrState::Merged => ("Merged", Color::Magenta),
+                            crate::github::PrState::Closed => ("Closed", Color::Red),
+                        };
+                        row1_spans.push(Span::styled(
+                            format!(" #{} {} ", pr.number, state_label),
+                            Style::default().fg(color).add_modifier(Modifier::BOLD),
+                        ));
+                    }
+
+                    if wt.ahead > 0 {
+                        row1_spans.push(Span::styled(format!(" \u{2191}{}", wt.ahead), Style::default().fg(Color::Cyan)));
+                    }
+                    if wt.behind > 0 {
+                        row1_spans.push(Span::styled(format!(" \u{2193}{}", wt.behind), Style::default().fg(Color::Yellow)));
+                    }
+
+                    let detail_row1 = Line::from(row1_spans);
+
+                    // Row 2: path + PR URL
+                    let mut row2_spans: Vec<Span> = vec![
                         Span::styled(
                             format!(" {} ", wt.path.display()),
                             Style::default().fg(Color::DarkGray),
                         ),
-                        Span::styled(
-                            format!("⎇ {} ", wt.branch),
-                            Style::default().fg(Color::Cyan),
-                        ),
                     ];
-                    if let Some(ref repo_name) = wt.repo_name {
-                        header_spans.push(Span::styled(
-                            format!(" [{}]", repo_name),
-                            Style::default().fg(Color::Yellow),
-                        ));
+
+                    if let Some(pr) = self.github_caches.get(&wt.repo_root).and_then(|c| c.get(&wt.branch)) {
+                        row2_spans.push(Span::styled("\u{2502} ", Style::default().fg(Color::DarkGray)));
+                        row2_spans.push(Span::styled(pr.url.clone(), Style::default().fg(Color::DarkGray)));
                     }
-                    let header = Line::from(header_spans);
-                    frame.render_widget(header, right_chunks[0]);
 
-                    // Render PR/git info bar
-                    if has_pr {
-                        let mut info_spans: Vec<Span> = vec![Span::raw(" ")];
+                    let detail_row2 = Line::from(row2_spans);
 
-                        if let Some(pr) = self.github_caches.get(&wt.repo_root).and_then(|c| c.get(&wt.branch)) {
-                            let (icon, color) = match pr.state {
-                                crate::github::PrState::Open => ("\u{e728}", Color::Green),
-                                crate::github::PrState::Draft => ("\u{e728}", Color::Yellow),
-                                crate::github::PrState::Merged => ("\u{e727}", Color::Magenta),
-                                crate::github::PrState::Closed => ("\u{e728}", Color::Red),
-                            };
-                            let state_label = match pr.state {
-                                crate::github::PrState::Open => "Open",
-                                crate::github::PrState::Draft => "Draft",
-                                crate::github::PrState::Merged => "Merged",
-                                crate::github::PrState::Closed => "Closed",
-                            };
-                            info_spans.push(Span::styled(format!("{} ", icon), Style::default().fg(color)));
-                            info_spans.push(Span::styled(format!("#{} ", pr.number), Style::default().fg(color).add_modifier(Modifier::BOLD)));
-                            info_spans.push(Span::styled(format!("{} ", state_label), Style::default().fg(color)));
-                            info_spans.push(Span::styled("· ", Style::default().fg(Color::DarkGray)));
-                            info_spans.push(Span::styled(pr.url.clone(), Style::default().fg(Color::DarkGray)));
-                        }
-
-                        if wt.ahead > 0 || wt.behind > 0 {
-                            if info_spans.len() > 1 {
-                                info_spans.push(Span::styled("  ", Style::default()));
-                            }
-                            if wt.ahead > 0 {
-                                info_spans.push(Span::styled(format!("↑{}", wt.ahead), Style::default().fg(Color::Cyan)));
-                            }
-                            if wt.behind > 0 {
-                                info_spans.push(Span::styled(format!(" ↓{}", wt.behind), Style::default().fg(Color::Yellow)));
-                            }
-                        }
-
-                        frame.render_widget(Line::from(info_spans), right_chunks[1]);
-                    }
+                    let detail_area = right_chunks[0];
+                    frame.render_widget(detail_row1, Rect { height: 1, ..detail_area });
+                    frame.render_widget(detail_row2, Rect {
+                        y: detail_area.y + 1,
+                        height: 1,
+                        ..detail_area
+                    });
                 }
 
                 // Render terminal in remaining space (dimmed when sidebar focused)
@@ -340,7 +337,7 @@ impl App {
                     if let Some(pty) = self.pty_sessions.get(key) {
                         let screen_arc = pty.screen();
                         let dimmed = self.focus == Focus::Sidebar;
-                        let terminal_area = right_chunks[2];
+                        let terminal_area = right_chunks[1];
                         let (cursor_row, cursor_col, clamped) = ui::render_terminal(
                             &screen_arc,
                             terminal_area,
