@@ -749,7 +749,7 @@ impl App {
     }
 
     /// Handle paste events for active dialogs. Returns true if the dialog consumed the paste.
-    fn handle_dialog_paste(&mut self, text: &str) -> bool {
+    pub fn handle_dialog_paste(&mut self, text: &str) -> bool {
         match &mut self.dialog {
             Dialog::CreateInput { ref mut input, ref mut short_name, ref active_field, ref mut selected_archived, .. } => {
                 // Strip newlines — branch names can't contain them
