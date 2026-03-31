@@ -1,24 +1,11 @@
-use std::process::Command;
-use tempfile::TempDir;
+mod common;
+
 use arbor::keys::Focus;
 use arbor::persistence::WorkflowStatus;
 
-fn init_test_repo() -> TempDir {
-    let dir = TempDir::new().unwrap();
-    Command::new("git")
-        .args(["init", dir.path().to_str().unwrap()])
-        .output()
-        .unwrap();
-    Command::new("git")
-        .args(["-C", dir.path().to_str().unwrap(), "commit", "--allow-empty", "-m", "init"])
-        .output()
-        .unwrap();
-    dir
-}
-
 #[test]
 fn test_main_worktree_defaults_to_in_progress() {
-    let dir = init_test_repo();
+    let dir = common::init_test_repo();
     let app = arbor::app::App::new(dir.path()).unwrap();
     let wt = &app.sidebar_state.worktrees[0];
     assert!(wt.is_main);
@@ -27,7 +14,7 @@ fn test_main_worktree_defaults_to_in_progress() {
 
 #[test]
 fn test_status_cycle_noop_on_main() {
-    let dir = init_test_repo();
+    let dir = common::init_test_repo();
     let mut app = arbor::app::App::new(dir.path()).unwrap();
     app.focus = Focus::Sidebar;
     app.sidebar_state.selected = 0;
@@ -37,7 +24,7 @@ fn test_status_cycle_noop_on_main() {
 
 #[test]
 fn test_status_cycle_on_non_main() {
-    let dir = init_test_repo();
+    let dir = common::init_test_repo();
     let mgr = arbor::worktree::WorktreeManager::open(dir.path()).unwrap();
     mgr.create("feature-a").unwrap();
 
@@ -62,7 +49,7 @@ fn test_status_cycle_on_non_main() {
 
 #[test]
 fn test_status_cycle_persists_to_file() {
-    let dir = init_test_repo();
+    let dir = common::init_test_repo();
     let mgr = arbor::worktree::WorktreeManager::open(dir.path()).unwrap();
     mgr.create("feature-b").unwrap();
 
@@ -81,7 +68,7 @@ fn test_status_cycle_persists_to_file() {
 
 #[test]
 fn test_config_override_main_always_in_progress() {
-    let dir = init_test_repo();
+    let dir = common::init_test_repo();
     // Write a config that tries to set main to Done
     let mut config = arbor::persistence::ArborConfig::default();
     config.worktrees.insert("main".to_string(), arbor::persistence::WorktreeConfig {

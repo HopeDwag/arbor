@@ -1,22 +1,12 @@
-use std::process::Command;
-use std::path::PathBuf;
-use tempfile::TempDir;
+mod common;
 
-fn init_repo_in(parent: &std::path::Path, name: &str) -> PathBuf {
-    let dir = parent.join(name);
-    std::fs::create_dir_all(&dir).unwrap();
-    Command::new("git").args(["init", dir.to_str().unwrap()]).output().unwrap();
-    Command::new("git").args(["-C", dir.to_str().unwrap(), "config", "user.email", "t@t"]).output().unwrap();
-    Command::new("git").args(["-C", dir.to_str().unwrap(), "config", "user.name", "T"]).output().unwrap();
-    Command::new("git").args(["-C", dir.to_str().unwrap(), "commit", "--allow-empty", "-m", "init"]).output().unwrap();
-    dir
-}
+use tempfile::TempDir;
 
 #[test]
 fn test_multi_repo_app_lists_all_worktrees() {
     let parent = TempDir::new().unwrap();
-    init_repo_in(parent.path(), "alpha");
-    init_repo_in(parent.path(), "beta");
+    common::init_repo_in(parent.path(), "alpha");
+    common::init_repo_in(parent.path(), "beta");
     let app = arbor::app::App::new(parent.path()).unwrap();
     let mains: Vec<_> = app.sidebar_state.worktrees.iter().filter(|w| w.is_main).collect();
     assert_eq!(mains.len(), 2);
@@ -25,8 +15,8 @@ fn test_multi_repo_app_lists_all_worktrees() {
 #[test]
 fn test_multi_repo_worktrees_have_repo_name() {
     let parent = TempDir::new().unwrap();
-    init_repo_in(parent.path(), "alpha");
-    init_repo_in(parent.path(), "beta");
+    common::init_repo_in(parent.path(), "alpha");
+    common::init_repo_in(parent.path(), "beta");
     let app = arbor::app::App::new(parent.path()).unwrap();
     for wt in &app.sidebar_state.worktrees {
         assert!(wt.repo_name.is_some());
@@ -39,11 +29,7 @@ fn test_multi_repo_worktrees_have_repo_name() {
 
 #[test]
 fn test_single_repo_worktrees_have_no_repo_name() {
-    let dir = TempDir::new().unwrap();
-    Command::new("git").args(["init", dir.path().to_str().unwrap()]).output().unwrap();
-    Command::new("git").args(["-C", dir.path().to_str().unwrap(), "config", "user.email", "t@t"]).output().unwrap();
-    Command::new("git").args(["-C", dir.path().to_str().unwrap(), "config", "user.name", "T"]).output().unwrap();
-    Command::new("git").args(["-C", dir.path().to_str().unwrap(), "commit", "--allow-empty", "-m", "init"]).output().unwrap();
+    let dir = common::init_test_repo();
     let app = arbor::app::App::new(dir.path()).unwrap();
     for wt in &app.sidebar_state.worktrees {
         assert!(wt.repo_name.is_none());
@@ -53,8 +39,8 @@ fn test_single_repo_worktrees_have_no_repo_name() {
 #[test]
 fn test_multi_repo_mains_pinned_to_in_progress() {
     let parent = TempDir::new().unwrap();
-    init_repo_in(parent.path(), "alpha");
-    init_repo_in(parent.path(), "beta");
+    common::init_repo_in(parent.path(), "alpha");
+    common::init_repo_in(parent.path(), "beta");
     let app = arbor::app::App::new(parent.path()).unwrap();
     for wt in &app.sidebar_state.worktrees {
         if wt.is_main {
@@ -66,8 +52,8 @@ fn test_multi_repo_mains_pinned_to_in_progress() {
 #[test]
 fn test_multi_repo_persistence_isolation() {
     let parent = TempDir::new().unwrap();
-    let alpha_path = init_repo_in(parent.path(), "alpha");
-    let beta_path = init_repo_in(parent.path(), "beta");
+    let alpha_path = common::init_repo_in(parent.path(), "alpha");
+    let beta_path = common::init_repo_in(parent.path(), "beta");
     let alpha_mgr = arbor::worktree::WorktreeManager::open(&alpha_path).unwrap();
     alpha_mgr.create("feature-a").unwrap();
 

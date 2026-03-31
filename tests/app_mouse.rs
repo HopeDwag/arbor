@@ -1,20 +1,7 @@
-use std::process::Command;
-use tempfile::TempDir;
+mod common;
+
 use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
 use arbor::keys::Focus;
-
-fn init_test_repo() -> TempDir {
-    let dir = TempDir::new().unwrap();
-    Command::new("git")
-        .args(["init", dir.path().to_str().unwrap()])
-        .output()
-        .unwrap();
-    Command::new("git")
-        .args(["-C", dir.path().to_str().unwrap(), "commit", "--allow-empty", "-m", "init"])
-        .output()
-        .unwrap();
-    dir
-}
 
 fn make_mouse_down(column: u16, row: u16) -> MouseEvent {
     MouseEvent {
@@ -27,7 +14,7 @@ fn make_mouse_down(column: u16, row: u16) -> MouseEvent {
 
 #[test]
 fn test_click_sidebar_focuses_sidebar() {
-    let dir = init_test_repo();
+    let dir = common::init_test_repo();
     let mut app = arbor::app::App::new(dir.path()).unwrap();
     // App starts with focus on Terminal
     assert_eq!(app.focus, Focus::Terminal);
@@ -39,7 +26,7 @@ fn test_click_sidebar_focuses_sidebar() {
 
 #[test]
 fn test_click_terminal_focuses_terminal() {
-    let dir = init_test_repo();
+    let dir = common::init_test_repo();
     let mut app = arbor::app::App::new(dir.path()).unwrap();
     // Start in sidebar focus
     app.focus = Focus::Sidebar;
@@ -51,7 +38,7 @@ fn test_click_terminal_focuses_terminal() {
 
 #[test]
 fn test_click_sidebar_then_terminal() {
-    let dir = init_test_repo();
+    let dir = common::init_test_repo();
     let mut app = arbor::app::App::new(dir.path()).unwrap();
     assert_eq!(app.focus, Focus::Terminal);
 
@@ -63,4 +50,3 @@ fn test_click_sidebar_then_terminal() {
     app.handle_mouse(make_mouse_down(35, 5)).unwrap();
     assert_eq!(app.focus, Focus::Terminal);
 }
-

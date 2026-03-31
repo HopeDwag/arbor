@@ -1,23 +1,10 @@
-use std::process::Command;
-use tempfile::TempDir;
-use arbor::app::Dialog;
+mod common;
 
-fn init_test_repo() -> TempDir {
-    let dir = TempDir::new().unwrap();
-    Command::new("git")
-        .args(["init", dir.path().to_str().unwrap()])
-        .output()
-        .unwrap();
-    Command::new("git")
-        .args(["-C", dir.path().to_str().unwrap(), "commit", "--allow-empty", "-m", "init"])
-        .output()
-        .unwrap();
-    dir
-}
+use arbor::app::Dialog;
 
 #[test]
 fn test_create_dialog_has_short_name_field() {
-    let dir = init_test_repo();
+    let dir = common::init_test_repo();
     let mut app = arbor::app::App::new(dir.path()).unwrap();
     app.handle_action(arbor::keys::Action::SidebarCreate).unwrap();
     match &app.dialog {
@@ -30,7 +17,7 @@ fn test_create_dialog_has_short_name_field() {
 
 #[test]
 fn test_create_with_short_name_persists() {
-    let dir = init_test_repo();
+    let dir = common::init_test_repo();
     let mut app = arbor::app::App::new(dir.path()).unwrap();
 
     let repo_root = app.sidebar_state.worktrees[0].repo_root.clone();
@@ -55,7 +42,7 @@ fn test_create_with_short_name_persists() {
 
 #[test]
 fn test_short_name_max_length() {
-    let dir = init_test_repo();
+    let dir = common::init_test_repo();
     let mut app = arbor::app::App::new(dir.path()).unwrap();
 
     app.dialog = Dialog::CreateInput {

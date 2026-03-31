@@ -4,18 +4,20 @@ use ratatui::style::{Color, Modifier, Style};
 use vt100_ctt::Parser;
 use std::sync::{Arc, Mutex};
 
-/// Render the PTY screen into a ratatui buffer and return the cursor position.
-/// Returns (cursor_row, cursor_col) relative to the area origin.
+/// Render the PTY screen into a ratatui buffer and return the cursor position
+/// plus the clamped scrollback offset.
+/// Returns (cursor_row, cursor_col, clamped_scroll_offset).
 pub fn render_terminal(
     parser: &Arc<Mutex<Parser>>,
     area: Rect,
     buf: &mut Buffer,
     dimmed: bool,
     scroll_offset: usize,
-) -> (u16, u16) {
+) -> (u16, u16, usize) {
     let mut parser = parser.lock().unwrap();
     let screen = parser.screen_mut();
     screen.set_scrollback(scroll_offset);
+    let clamped = screen.scrollback();
 
     let rows = area.height.min(screen.size().0);
     let cols = area.width.min(screen.size().1);
@@ -65,7 +67,19 @@ pub fn render_terminal(
         }
     }
 
-    screen.cursor_position()
+    // Show scroll indicator when scrolled up
+    if clamped > 0 && cols > 0 && rows > 0 {
+        let label = format!(" [+{}] ", clamped);
+        let label_len = label.len().min(cols as usize);
+        let start_x = area.x + cols - label_len as u16;
+        let indicator_style = Style::reset().fg(Color::Black).bg(Color::Yellow).add_modifier(Modifier::BOLD);
+        for (i, ch) in label.chars().take(label_len).enumerate() {
+            buf[(start_x + i as u16, area.y)].set_char(ch).set_style(indicator_style);
+        }
+    }
+
+    let cursor = screen.cursor_position();
+    (cursor.0, cursor.1, clamped)
 }
 
 fn dim_style(style: Style) -> Style {

@@ -1,22 +1,8 @@
-use std::process::Command;
-use tempfile::TempDir;
-
-fn init_test_repo() -> TempDir {
-    let dir = TempDir::new().unwrap();
-    Command::new("git")
-        .args(["init", dir.path().to_str().unwrap()])
-        .output()
-        .unwrap();
-    Command::new("git")
-        .args(["-C", dir.path().to_str().unwrap(), "commit", "--allow-empty", "-m", "init"])
-        .output()
-        .unwrap();
-    dir
-}
+mod common;
 
 #[test]
 fn test_list_worktrees_returns_main() {
-    let dir = init_test_repo();
+    let dir = common::init_test_repo();
     let manager = arbor::worktree::WorktreeManager::open(dir.path()).unwrap();
     let worktrees = manager.list().unwrap();
     assert!(!worktrees.is_empty());
@@ -25,7 +11,7 @@ fn test_list_worktrees_returns_main() {
 
 #[test]
 fn test_create_worktree() {
-    let dir = init_test_repo();
+    let dir = common::init_test_repo();
     let manager = arbor::worktree::WorktreeManager::open(dir.path()).unwrap();
     manager.create("test-branch").unwrap();
     let worktrees = manager.list().unwrap();
@@ -34,7 +20,7 @@ fn test_create_worktree() {
 
 #[test]
 fn test_delete_worktree() {
-    let dir = init_test_repo();
+    let dir = common::init_test_repo();
     let manager = arbor::worktree::WorktreeManager::open(dir.path()).unwrap();
     manager.create("to-delete").unwrap();
     manager.delete("to-delete", false).unwrap();
@@ -44,7 +30,7 @@ fn test_delete_worktree() {
 
 #[test]
 fn test_cannot_delete_main() {
-    let dir = init_test_repo();
+    let dir = common::init_test_repo();
     let manager = arbor::worktree::WorktreeManager::open(dir.path()).unwrap();
     let result = manager.delete("main", false);
     assert!(result.is_err());
@@ -52,7 +38,7 @@ fn test_cannot_delete_main() {
 
 #[test]
 fn test_worktree_info_has_workflow_status_and_short_name() {
-    let dir = init_test_repo();
+    let dir = common::init_test_repo();
     let manager = arbor::worktree::WorktreeManager::open(dir.path()).unwrap();
     let worktrees = manager.list().unwrap();
     assert_eq!(worktrees[0].workflow_status, arbor::persistence::WorkflowStatus::InProgress);
@@ -61,14 +47,14 @@ fn test_worktree_info_has_workflow_status_and_short_name() {
 
 #[test]
 fn test_repo_root_accessor() {
-    let dir = init_test_repo();
+    let dir = common::init_test_repo();
     let manager = arbor::worktree::WorktreeManager::open(dir.path()).unwrap();
     assert!(manager.repo_root().exists());
 }
 
 #[test]
 fn test_worktree_has_ahead_behind_fields() {
-    let dir = init_test_repo();
+    let dir = common::init_test_repo();
     let manager = arbor::worktree::WorktreeManager::open(dir.path()).unwrap();
     let worktrees = manager.list().unwrap();
     // No remote, so both should be 0
@@ -78,7 +64,7 @@ fn test_worktree_has_ahead_behind_fields() {
 
 #[test]
 fn test_full_crud_cycle() {
-    let dir = init_test_repo();
+    let dir = common::init_test_repo();
     let manager = arbor::worktree::WorktreeManager::open(dir.path()).unwrap();
 
     // List — starts with just main
