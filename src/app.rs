@@ -20,7 +20,6 @@ use crate::worktree::{WorktreeInfo, WorktreeManager};
 pub enum DialogField {
     Repo,
     Branch,
-    Name,
 }
 
 #[derive(Debug)]
@@ -28,7 +27,6 @@ pub enum Dialog {
     None,
     CreateInput {
         input: String,
-        short_name: String,
         active_field: DialogField,
         archived: Vec<String>,     // branches that can be restored
         selected_archived: Option<usize>,
@@ -521,7 +519,6 @@ impl App {
 
                 self.dialog = Dialog::CreateInput {
                     input: String::new(),
-                    short_name: String::new(),
                     active_field: DialogField::Branch,
                     archived,
                     selected_archived: None,
@@ -612,7 +609,7 @@ impl App {
         }
 
         match &mut self.dialog {
-            Dialog::CreateInput { ref mut input, ref mut short_name, ref mut active_field, ref mut archived, ref mut selected_archived, ref mut repo_root, ref repo_names, .. } => {
+            Dialog::CreateInput { ref mut input, ref mut active_field, ref mut archived, ref mut selected_archived, ref mut repo_root, ref repo_names, .. } => {
                 match key.code {
                     KeyCode::Enter => {
                         // Use selected archived branch or typed input
@@ -623,7 +620,7 @@ impl App {
                         } else {
                             return Ok(true);
                         };
-                        let sn = if short_name.is_empty() { None } else { Some(short_name.clone()) };
+                        let sn = derive_short_name(&branch);
                         let repo_root = repo_root.clone();
                         if let Some(mgr) = self.managers.get(&repo_root) {
                             if mgr.create(&branch).is_err() {
@@ -661,8 +658,7 @@ impl App {
                     KeyCode::Down => {
                         *active_field = match active_field {
                             DialogField::Repo => DialogField::Branch,
-                            DialogField::Branch => DialogField::Name,
-                            DialogField::Name => DialogField::Name,
+                            DialogField::Branch => DialogField::Branch,
                         };
                     }
                     KeyCode::Up => {
@@ -671,7 +667,6 @@ impl App {
                             DialogField::Branch => {
                                 if !repo_names.is_empty() { DialogField::Repo } else { DialogField::Branch }
                             }
-                            DialogField::Name => DialogField::Branch,
                         };
                     }
                     KeyCode::Tab if !archived.is_empty() && *active_field == DialogField::Branch => {
@@ -696,9 +691,6 @@ impl App {
                         match active_field {
                             DialogField::Repo => {}
                             DialogField::Branch => input.push(c),
-                            DialogField::Name => {
-                                if short_name.len() < 20 { short_name.push(c); }
-                            }
                         }
                     }
                     KeyCode::Backspace => {
@@ -706,7 +698,6 @@ impl App {
                         match active_field {
                             DialogField::Repo => {}
                             DialogField::Branch => { input.pop(); }
-                            DialogField::Name => { short_name.pop(); }
                         }
                     }
                     _ => {}
@@ -751,18 +742,13 @@ impl App {
     /// Handle paste events for active dialogs. Returns true if the dialog consumed the paste.
     pub fn handle_dialog_paste(&mut self, text: &str) -> bool {
         match &mut self.dialog {
-            Dialog::CreateInput { ref mut input, ref mut short_name, ref active_field, ref mut selected_archived, .. } => {
+            Dialog::CreateInput { ref mut input, ref active_field, ref mut selected_archived, .. } => {
                 // Strip newlines — branch names can't contain them
                 let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
                 *selected_archived = None;
                 match active_field {
                     DialogField::Repo => {} // read-only
                     DialogField::Branch => input.push_str(&clean),
-                    DialogField::Name => {
-                        let remaining = 20usize.saturating_sub(short_name.len());
-                        let truncated: String = clean.chars().take(remaining).collect();
-                        short_name.push_str(&truncated);
-                    }
                 }
                 true
             }
@@ -911,6 +897,18 @@ impl App {
         }
         self.active_worktree = Some(key);
         Ok(())
+    }
+}
+
+/// Derive a short display name from a branch name.
+/// Takes the last segment after `/`. Returns `None` if the branch has no `/`
+/// (i.e., the branch name itself is already the short name). Truncates to 20 chars.
+pub fn derive_short_name(branch: &str) -> Option<String> {
+    let name = branch.rsplit('/').next().unwrap_or(branch);
+    if name == branch {
+        None // no prefix, branch name IS the short name
+    } else {
+        Some(name.chars().take(20).collect())
     }
 }
 

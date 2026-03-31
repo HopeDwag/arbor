@@ -122,22 +122,19 @@ test_duplicate_worktree_no_crash() {
 test_short_name_displayed() {
     uat_start
     uat_wait 500
-    # Switch to sidebar, create worktree with short name
+    # Switch to sidebar, create worktree with prefixed branch
     uat_send S-Left
     uat_wait
     uat_send n
     uat_wait
-    uat_send "test-very-long-branch-name"
-    uat_send Down
-    uat_wait 100
-    uat_send "shortname"
+    uat_send "feature/my-short-name"
     uat_send Enter
     uat_wait 1000
-    # Switch to sidebar and check short name is displayed
+    # Switch to sidebar and check auto-derived short name is displayed
     uat_send S-Left
     uat_wait
-    # The short name should appear in the sidebar (the only place it renders)
-    assert_screen_contains "short name in sidebar" "shortname"
+    # The short name (last segment after /) should appear in the sidebar
+    assert_screen_contains "short name in sidebar" "my-short-name"
     local result=$?
     uat_stop
     return $result

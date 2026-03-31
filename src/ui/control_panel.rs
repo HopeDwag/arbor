@@ -175,11 +175,11 @@ pub fn render_control_panel(
 
     // Render dialog overlay at bottom of sidebar
     match dialog {
-        Dialog::CreateInput { input, short_name, active_field, archived, selected_archived, repo_names, selected_repo, .. } => {
+        Dialog::CreateInput { input, active_field, archived, selected_archived, repo_names, selected_repo, .. } => {
             let has_archived = !archived.is_empty();
             let has_repo = !repo_names.is_empty();
             let repo_row_height: u16 = if has_repo { 1 } else { 0 };
-            let dialog_height: u16 = if has_archived { 6 } else { 4 } + repo_row_height;
+            let dialog_height: u16 = if has_archived { 5 } else { 3 } + repo_row_height;
             let dialog_area = Rect {
                 x: area.x + 1,
                 y: area.bottom().saturating_sub(dialog_height + 1),
@@ -230,18 +230,6 @@ pub fn render_control_panel(
                 Span::styled(format!("{}_", input), input_style),
             ]);
             buf.set_line(dialog_area.x, row, &prompt, dialog_area.width);
-            row += 1;
-
-            let name_style = if *active_field == DialogField::Name {
-                Style::default().fg(Color::Cyan).bg(Color::DarkGray)
-            } else {
-                Style::default().fg(Color::White).bg(Color::DarkGray)
-            };
-            let name_prompt = Line::from(vec![
-                Span::styled(" Name:   ", Style::default().fg(Color::White).bg(Color::DarkGray)),
-                Span::styled(format!("{}_", short_name), name_style),
-            ]);
-            buf.set_line(dialog_area.x, row, &name_prompt, dialog_area.width);
             row += 1;
 
             if has_archived {
