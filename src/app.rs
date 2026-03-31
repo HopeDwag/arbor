@@ -59,7 +59,7 @@ pub struct App {
     multi_repo: bool,
     drag_state: Option<DragState>,
     github_caches: HashMap<PathBuf, SharedGitHubCache>,
-    scroll_offset: usize,
+    pub scroll_offset: usize,
 }
 
 impl App {
