@@ -120,6 +120,10 @@ git commit -m "feat: add promoted and previous_branch fields to WorktreeConfig"
 
 This is the core logic — stash, checkout, pop, detach sidecar HEAD.
 
+**Key insight:** Git worktrees share the same `.git` object store, which means **stashes are shared**. A stash created via `sidecar_repo.stash_save()` is visible from `main_repo.stash_pop()` because both Repository handles reference the same underlying repo. The stash stack is LIFO, so ordering matters: stash sidecar first (goes to index 0), then main (pushes sidecar to index 1). After checkout, pop index 0 (main's stash), then pop index 0 again (sidecar's stash, now at top).
+
+**Rollback:** If checkout fails after stashing, pop the stashes back and return an error. If `stash_pop` fails (conflicts), leave it stashed and warn the user.
+
 - [ ] **Step 1: Write failing tests**
 
 Create `tests/promote.rs`:
@@ -156,8 +160,7 @@ fn init_repo_with_worktree() -> (TempDir, PathBuf, PathBuf) {
 #[test]
 fn test_promote_switches_main_to_feature_branch() {
     let (_dir, main_path, wt_path) = init_repo_with_worktree();
-    arbor::promote::promote(&main_path, &wt_path, "feature-x", "main").unwrap();
-    // Main should now be on feature-x
+    arbor::promote::promote(&main_path, &wt_path, "feature-x").unwrap();
     let repo = git2::Repository::open(&main_path).unwrap();
     let branch = repo.head().unwrap().shorthand().unwrap().to_string();
     assert_eq!(branch, "feature-x");
@@ -166,10 +169,8 @@ fn test_promote_switches_main_to_feature_branch() {
 #[test]
 fn test_promote_preserves_main_dirty_changes() {
     let (_dir, main_path, wt_path) = init_repo_with_worktree();
-    // Make main dirty
     std::fs::write(main_path.join("dirty.txt"), "wip").unwrap();
-    arbor::promote::promote(&main_path, &wt_path, "feature-x", "main").unwrap();
-    // Dirty file should still be there on the new branch
+    arbor::promote::promote(&main_path, &wt_path, "feature-x").unwrap();
     assert!(main_path.join("dirty.txt").exists());
     assert_eq!(std::fs::read_to_string(main_path.join("dirty.txt")).unwrap(), "wip");
 }
@@ -177,18 +178,15 @@ fn test_promote_preserves_main_dirty_changes() {
 #[test]
 fn test_promote_applies_sidecar_dirty_changes() {
     let (_dir, main_path, wt_path) = init_repo_with_worktree();
-    // Make sidecar dirty
     std::fs::write(wt_path.join("sidecar-wip.txt"), "testing").unwrap();
-    arbor::promote::promote(&main_path, &wt_path, "feature-x", "main").unwrap();
-    // Sidecar's dirty file should now be in main
+    arbor::promote::promote(&main_path, &wt_path, "feature-x").unwrap();
     assert!(main_path.join("sidecar-wip.txt").exists());
 }
 
 #[test]
 fn test_promote_detaches_sidecar_head() {
     let (_dir, main_path, wt_path) = init_repo_with_worktree();
-    arbor::promote::promote(&main_path, &wt_path, "feature-x", "main").unwrap();
-    // Sidecar should be in detached HEAD state
+    arbor::promote::promote(&main_path, &wt_path, "feature-x").unwrap();
     let wt_repo = git2::Repository::open(&wt_path).unwrap();
     assert!(wt_repo.head_detached().unwrap());
 }
@@ -196,9 +194,8 @@ fn test_promote_detaches_sidecar_head() {
 #[test]
 fn test_demote_restores_previous_branch() {
     let (_dir, main_path, wt_path) = init_repo_with_worktree();
-    arbor::promote::promote(&main_path, &wt_path, "feature-x", "main").unwrap();
+    arbor::promote::promote(&main_path, &wt_path, "feature-x").unwrap();
     arbor::promote::demote(&main_path, &wt_path, "feature-x", "main").unwrap();
-    // Main should be back on the original branch
     let repo = git2::Repository::open(&main_path).unwrap();
     let branch = repo.head().unwrap().shorthand().unwrap().to_string();
     assert_eq!(branch, "main");
@@ -207,13 +204,28 @@ fn test_demote_restores_previous_branch() {
 #[test]
 fn test_demote_restores_sidecar_branch() {
     let (_dir, main_path, wt_path) = init_repo_with_worktree();
-    arbor::promote::promote(&main_path, &wt_path, "feature-x", "main").unwrap();
+    arbor::promote::promote(&main_path, &wt_path, "feature-x").unwrap();
     arbor::promote::demote(&main_path, &wt_path, "feature-x", "main").unwrap();
-    // Sidecar should be back on feature-x (not detached)
     let wt_repo = git2::Repository::open(&wt_path).unwrap();
     assert!(!wt_repo.head_detached().unwrap());
     let branch = wt_repo.head().unwrap().shorthand().unwrap().to_string();
     assert_eq!(branch, "feature-x");
+}
+
+#[test]
+fn test_full_promote_demote_with_dirty_state() {
+    let (_dir, main_path, wt_path) = init_repo_with_worktree();
+    // Both sides dirty
+    std::fs::write(main_path.join("main-wip.txt"), "main work").unwrap();
+    std::fs::write(wt_path.join("sidecar-wip.txt"), "sidecar work").unwrap();
+    arbor::promote::promote(&main_path, &wt_path, "feature-x").unwrap();
+    // Both dirty files should be in main now
+    assert!(main_path.join("main-wip.txt").exists());
+    assert!(main_path.join("sidecar-wip.txt").exists());
+    // Demote
+    arbor::promote::demote(&main_path, &wt_path, "feature-x", "main").unwrap();
+    // main-wip and sidecar-wip should now be in sidecar
+    // (they were all stashed from main during demote)
 }
 ```
 
@@ -227,23 +239,23 @@ Expected: FAIL — `arbor::promote` doesn't exist
 Create `src/promote.rs`:
 
 ```rust
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result};
 use git2::{Repository, StashFlags};
 use std::path::Path;
 
 /// Promote a sidecar worktree's branch into the main workspace.
 ///
-/// 1. Stash main's dirty changes (if any)
-/// 2. Stash sidecar's dirty changes (if any)
-/// 3. Detach sidecar's HEAD (avoids git's "branch in use by worktree" error)
+/// Stash ordering (LIFO, shared across worktrees):
+/// 1. Stash sidecar dirty changes (if any) → index 0
+/// 2. Stash main dirty changes (if any) → index 0 (sidecar now at 1)
+/// 3. Detach sidecar HEAD (avoids "branch in use" error)
 /// 4. Checkout target branch in main
-/// 5. Pop main's stash (preserves main's WIP on the new branch)
-/// 6. Attempt to pop sidecar's stash in main (only if clean apply)
+/// 5. Pop index 0 = main's stash (restores main's WIP on new branch)
+/// 6. Pop index 0 = sidecar's stash (applies sidecar changes if clean)
 pub fn promote(
     main_path: &Path,
     sidecar_path: &Path,
     target_branch: &str,
-    _current_branch: &str,
 ) -> Result<()> {
     let main_repo = Repository::open(main_path).context("Cannot open main repo")?;
     let sidecar_repo = Repository::open(sidecar_path).context("Cannot open sidecar repo")?;
@@ -251,20 +263,7 @@ pub fn promote(
     let main_dirty = !main_repo.statuses(None)?.is_empty();
     let sidecar_dirty = !sidecar_repo.statuses(None)?.is_empty();
 
-    // Step 1: Stash main's dirty changes
-    let main_stashed = if main_dirty {
-        let sig = main_repo.signature()?;
-        main_repo.stash_save(
-            &sig,
-            &format!("arbor-promote:{}", target_branch),
-            Some(StashFlags::INCLUDE_UNTRACKED),
-        )?;
-        true
-    } else {
-        false
-    };
-
-    // Step 2: Stash sidecar's dirty changes
+    // Step 1: Stash sidecar FIRST (goes to index 0, will be pushed down)
     let sidecar_stashed = if sidecar_dirty {
         let sig = sidecar_repo.signature()?;
         sidecar_repo.stash_save(
@@ -277,37 +276,58 @@ pub fn promote(
         false
     };
 
-    // Step 3: Detach sidecar's HEAD
+    // Step 2: Stash main (goes to index 0, sidecar now at index 1)
+    let main_stashed = if main_dirty {
+        let sig = main_repo.signature()?;
+        main_repo.stash_save(
+            &sig,
+            &format!("arbor-promote:{}", target_branch),
+            Some(StashFlags::INCLUDE_UNTRACKED),
+        )?;
+        true
+    } else {
+        false
+    };
+
+    // Step 3: Detach sidecar HEAD
     let sidecar_head_oid = sidecar_repo.head()?.target()
         .context("Sidecar HEAD has no target")?;
     sidecar_repo.set_head_detached(sidecar_head_oid)?;
 
     // Step 4: Checkout target branch in main
-    let branch = main_repo
+    let branch_ref = main_repo
         .find_branch(target_branch, git2::BranchType::Local)
         .context("Target branch not found")?;
-    let refname = branch.get().name().context("Invalid branch ref")?;
-    main_repo.set_head(refname)?;
-    main_repo.checkout_head(Some(
-        git2::build::CheckoutBuilder::new().force(),
-    ))?;
+    let refname = branch_ref.get().name().context("Invalid branch ref")?.to_string();
 
-    // Step 5: Pop main's stash (preserves main's WIP)
+    if let Err(e) = (|| -> Result<()> {
+        main_repo.set_head(&refname)?;
+        main_repo.checkout_head(Some(
+            git2::build::CheckoutBuilder::new().force(),
+        ))?;
+        Ok(())
+    })() {
+        // Rollback: pop stashes back in reverse order
+        if main_stashed {
+            let _ = main_repo.stash_pop(0, None);
+        }
+        if sidecar_stashed {
+            let _ = sidecar_repo.stash_pop(0, None);
+        }
+        return Err(e).context("Checkout failed, rolled back stashes");
+    }
+
+    // Step 5: Pop main's stash (index 0) — restores main's WIP on new branch
     if main_stashed {
-        let mut cb = git2::build::CheckoutBuilder::new();
-        if let Err(e) = main_repo.stash_pop(0, Some(
-            git2::StashApplyOptions::new().checkout_options(cb.safe()),
-        )) {
+        if let Err(e) = main_repo.stash_pop(0, None) {
             eprintln!("arbor: warning: could not restore main's changes: {}", e);
+            eprintln!("arbor: your changes are in `git stash list`");
         }
     }
 
-    // Step 6: Pop sidecar's stash onto main (only if clean)
+    // Step 6: Pop sidecar's stash (now at index 0) onto main — only if clean
     if sidecar_stashed {
-        let mut cb = git2::build::CheckoutBuilder::new();
-        if let Err(_) = main_repo.stash_pop(0, Some(
-            git2::StashApplyOptions::new().checkout_options(cb.safe()),
-        )) {
+        if let Err(_) = main_repo.stash_pop(0, None) {
             eprintln!("arbor: sidecar changes stashed. Apply manually with `git stash pop`");
         }
     }
@@ -315,12 +335,13 @@ pub fn promote(
     Ok(())
 }
 
-/// Demote: restore main to its previous branch, move the promoted branch back to sidecar.
+/// Demote: restore main to its previous branch, move promoted branch back to sidecar.
 ///
-/// 1. Stash main's dirty changes
-/// 2. Checkout previous branch in main (frees up the promoted branch)
-/// 3. Checkout the promoted branch in sidecar (re-attach HEAD)
-/// 4. Pop stash onto sidecar
+/// Stash ordering:
+/// 1. Stash main dirty changes → index 0
+/// 2. Checkout previous branch in main (frees promoted branch)
+/// 3. Re-attach sidecar to promoted branch
+/// 4. Pop stash (index 0) onto sidecar
 pub fn demote(
     main_path: &Path,
     sidecar_path: &Path,
@@ -328,7 +349,6 @@ pub fn demote(
     previous_branch: &str,
 ) -> Result<()> {
     let main_repo = Repository::open(main_path).context("Cannot open main repo")?;
-    let sidecar_repo = Repository::open(sidecar_path).context("Cannot open sidecar repo")?;
 
     let main_dirty = !main_repo.statuses(None)?.is_empty();
 
@@ -346,32 +366,30 @@ pub fn demote(
     };
 
     // Step 2: Checkout previous branch in main
-    let branch = main_repo
+    let branch_ref = main_repo
         .find_branch(previous_branch, git2::BranchType::Local)
         .context("Previous branch not found")?;
-    let refname = branch.get().name().context("Invalid branch ref")?;
-    main_repo.set_head(refname)?;
+    let refname = branch_ref.get().name().context("Invalid branch ref")?.to_string();
+    main_repo.set_head(&refname)?;
     main_repo.checkout_head(Some(
         git2::build::CheckoutBuilder::new().force(),
     ))?;
 
     // Step 3: Re-attach sidecar to the promoted branch
+    let sidecar_repo = Repository::open(sidecar_path).context("Cannot open sidecar repo")?;
     let sidecar_branch = sidecar_repo
         .find_branch(promoted_branch, git2::BranchType::Local)
         .context("Promoted branch not found in sidecar")?;
     let sidecar_refname = sidecar_branch.get().name()
-        .context("Invalid sidecar branch ref")?;
-    sidecar_repo.set_head(sidecar_refname)?;
+        .context("Invalid sidecar branch ref")?.to_string();
+    sidecar_repo.set_head(&sidecar_refname)?;
     sidecar_repo.checkout_head(Some(
         git2::build::CheckoutBuilder::new().force(),
     ))?;
 
-    // Step 4: Pop stash onto sidecar
+    // Step 4: Pop stash onto sidecar (stash is shared, index 0 is main's stash)
     if stashed {
-        let mut cb = git2::build::CheckoutBuilder::new();
-        if let Err(_) = sidecar_repo.stash_pop(0, Some(
-            git2::StashApplyOptions::new().checkout_options(cb.safe()),
-        )) {
+        if let Err(_) = sidecar_repo.stash_pop(0, None) {
             eprintln!("arbor: changes stashed. Apply in sidecar with `git stash pop`");
         }
     }
@@ -430,10 +448,22 @@ In `handle_action` for `Action::Promote`:
 - Otherwise → show PromoteConfirm dialog
 
 In `handle_dialog_key` for `PromoteConfirm`:
-- Enter → call `promote::promote()`, update config, rebuild worktree list
+- Enter → call `promote::promote()`. On `Err`, show error in status bar (store in `self.status_message: Option<String>`, render in status bar, clear on next keypress). On `Ok`, update config and rebuild worktree list.
 - Esc → cancel
 
-- [ ] **Step 3: Handle promoted state in worktree list**
+- [ ] **Step 3: Add `promoted` field to WorktreeInfo**
+
+Add `pub promoted: bool` to `WorktreeInfo` in `src/worktree/manager.rs`. Default to `false` in `list()`. Populate from `ArborConfig` in `build_worktree_list()` (same place where `workflow_status` and `short_name` are applied from config):
+
+```rust
+if let Some(wt_config) = config.worktrees.get(&wt.branch) {
+    wt.workflow_status = wt_config.status;
+    wt.short_name = wt_config.short_name.clone();
+    wt.promoted = wt_config.promoted; // NEW
+}
+```
+
+- [ ] **Step 4: Handle promoted state in config**
 
 After promote, set `promoted: true` and `previous_branch` in the config for that worktree. After demote, clear them. Rebuild the worktree list after both operations.
 
@@ -459,7 +489,7 @@ git commit -m "feat: wire promote/demote into TUI with confirmation dialog"
 
 - [ ] **Step 1: Show promoted icon in sidebar**
 
-In `control_panel.rs`, when rendering a worktree that has `promoted: true` in config, use `★` icon instead of the normal status icon.
+In `control_panel.rs`, when rendering a worktree where `wt.promoted` is `true` (populated from config in `build_worktree_list`), use `★` icon instead of the normal status icon.
 
 - [ ] **Step 2: Update status bar keybinding hints**
 
