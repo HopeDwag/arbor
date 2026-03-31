@@ -1,12 +1,13 @@
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, List, ListItem, ListState, StatefulWidget, Widget};
 
 use crate::app::{Dialog, DialogField};
 use crate::github::PrState;
 use crate::persistence::WorkflowStatus;
+use crate::ui::theme::THEME;
 use crate::worktree::{WorktreeInfo, format_age};
 
 pub struct ControlPanelState {
@@ -28,9 +29,9 @@ pub fn render_control_panel(
     filter: &Option<String>,
 ) {
     let border_style = if focused {
-        Style::default().fg(Color::Cyan)
+        Style::default().fg(THEME.aqua)
     } else {
-        Style::default().fg(Color::DarkGray)
+        Style::default().fg(THEME.bg3)
     };
 
     let block = Block::default()
@@ -57,8 +58,8 @@ pub fn render_control_panel(
     let mut list_area = list_area;
     if let Some(ref filter_text) = filter {
         let filter_line = Line::from(vec![
-            Span::styled(" \u{2315} ", Style::default().fg(Color::Cyan)),
-            Span::styled(format!("{}_", filter_text), Style::default().fg(Color::Cyan)),
+            Span::styled(" \u{2315} ", Style::default().fg(THEME.aqua)),
+            Span::styled(format!("{}_", filter_text), Style::default().fg(THEME.aqua)),
         ]);
         buf.set_line(list_area.x, list_area.y, &filter_line, list_area.width);
         list_area = Rect {
@@ -112,11 +113,11 @@ pub fn render_control_panel(
         items.push(ListItem::new(Line::from(vec![
             Span::styled(
                 format!(" {}", label),
-                Style::default().fg(Color::DarkGray).add_modifier(Modifier::BOLD),
+                Style::default().fg(THEME.grey0).add_modifier(Modifier::BOLD),
             ),
             Span::styled(
                 format!("  {}", count),
-                Style::default().fg(Color::Gray),
+                Style::default().fg(THEME.grey1),
             ),
         ])));
         // Ensure row_to_flat_idx is long enough, map header row to None
@@ -134,16 +135,16 @@ pub fn render_control_panel(
                 if last_output > 0 && now_millis.saturating_sub(last_output) < 500 {
                     let frames = ['\u{280B}', '\u{2819}', '\u{2839}', '\u{2838}', '\u{283C}', '\u{2834}', '\u{2826}', '\u{2827}', '\u{2807}', '\u{280F}'];
                     let frame_char = frames[(spinner_frame % 10) as usize];
-                    Span::styled(format!("{} ", frame_char), Style::default().fg(Color::Cyan))
+                    Span::styled(format!("{} ", frame_char), Style::default().fg(THEME.aqua))
                 } else {
-                    Span::styled("! ", Style::default().fg(Color::Yellow))
+                    Span::styled("! ", Style::default().fg(THEME.yellow))
                 }
             } else {
                 match wt.workflow_status {
-                    WorkflowStatus::Queued => Span::styled("\u{25B6} ", Style::default().fg(Color::DarkGray)),
-                    WorkflowStatus::Done => Span::styled("\u{2713} ", Style::default().fg(Color::Green)),
-                    WorkflowStatus::InReview => Span::styled("\u{e728} ", Style::default().fg(Color::Cyan)),
-                    WorkflowStatus::InProgress => Span::styled("\u{00B7} ", Style::default().fg(Color::DarkGray)),
+                    WorkflowStatus::Queued => Span::styled("\u{25B6} ", Style::default().fg(THEME.grey0)),
+                    WorkflowStatus::Done => Span::styled("\u{2713} ", Style::default().fg(THEME.green)),
+                    WorkflowStatus::InReview => Span::styled("\u{e728} ", Style::default().fg(THEME.aqua)),
+                    WorkflowStatus::InProgress => Span::styled("\u{00B7} ", Style::default().fg(THEME.grey0)),
                 }
             };
 
@@ -154,11 +155,11 @@ pub fn render_control_panel(
                 wt.short_name.as_deref().unwrap_or(&wt.branch).to_string()
             };
             let name_style = if is_selected && focused {
-                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+                Style::default().fg(THEME.aqua).add_modifier(Modifier::BOLD)
             } else if is_selected {
-                Style::default().fg(Color::DarkGray).add_modifier(Modifier::BOLD)
+                Style::default().fg(THEME.grey0).add_modifier(Modifier::BOLD)
             } else {
-                Style::default().fg(Color::White)
+                Style::default().fg(THEME.fg)
             };
 
             // Build row 1: icon + name + tags
@@ -170,16 +171,16 @@ pub fn render_control_panel(
 
             // Dirty tag
             if wt.is_dirty {
-                line1_spans.push(Span::styled(" M", Style::default().fg(Color::Yellow)));
+                line1_spans.push(Span::styled(" M", Style::default().fg(THEME.yellow)));
             }
 
             // PR tag
             if let Some((pr_num, ref pr_state)) = wt.pr {
                 let (pr_color, pr_suffix) = match pr_state {
-                    PrState::Open => (Color::Green, ""),
-                    PrState::Draft => (Color::Yellow, " Draft"),
-                    PrState::Merged => (Color::Magenta, " Merged"),
-                    PrState::Closed => (Color::Red, " Closed"),
+                    PrState::Open => (THEME.green, ""),
+                    PrState::Draft => (THEME.yellow, " Draft"),
+                    PrState::Merged => (THEME.purple, " Merged"),
+                    PrState::Closed => (THEME.red, " Closed"),
                 };
                 line1_spans.push(Span::styled(
                     format!(" #{}{}", pr_num, pr_suffix),
@@ -200,26 +201,26 @@ pub fn render_control_panel(
             let mut line2_spans = vec![
                 Span::styled(
                     format!("    {}", truncated_msg),
-                    Style::default().fg(Color::DarkGray),
+                    Style::default().fg(THEME.grey0),
                 ),
             ];
 
             if wt.ahead > 0 {
                 line2_spans.push(Span::styled(
                     format!(" \u{2191}{}", wt.ahead),
-                    Style::default().fg(Color::Cyan),
+                    Style::default().fg(THEME.aqua),
                 ));
             }
             if wt.behind > 0 {
                 line2_spans.push(Span::styled(
                     format!(" \u{2193}{}", wt.behind),
-                    Style::default().fg(Color::Yellow),
+                    Style::default().fg(THEME.yellow),
                 ));
             }
             if wt.last_commit_age_secs < u64::MAX {
                 line2_spans.push(Span::styled(
                     format!(" {}", format_age(wt.last_commit_age_secs)),
-                    Style::default().fg(Color::DarkGray),
+                    Style::default().fg(THEME.grey0),
                 ));
             }
 
@@ -257,7 +258,7 @@ pub fn render_control_panel(
     }
 
     let highlight = if focused {
-        Style::default().bg(Color::DarkGray)
+        Style::default().bg(THEME.bg3)
     } else {
         Style::default()
     };
@@ -280,14 +281,14 @@ pub fn render_control_panel(
             };
             for y in dialog_area.y..dialog_area.bottom() {
                 for x in dialog_area.x..dialog_area.right() {
-                    buf[(x, y)].set_char(' ').set_style(Style::default().bg(Color::DarkGray));
+                    buf[(x, y)].set_char(' ').set_style(Style::default().bg(THEME.bg3));
                 }
             }
             let mut row = dialog_area.y;
 
             let title_line = Line::from(Span::styled(
                 " New worktree",
-                Style::default().fg(Color::Cyan).bg(Color::DarkGray).add_modifier(Modifier::BOLD),
+                Style::default().fg(THEME.aqua).bg(THEME.bg3).add_modifier(Modifier::BOLD),
             ));
             buf.set_line(dialog_area.x, row, &title_line, dialog_area.width);
             row += 1;
@@ -295,15 +296,15 @@ pub fn render_control_panel(
             // Repo row (multi-repo mode only)
             if has_repo {
                 let repo_style = if *active_field == DialogField::Repo {
-                    Style::default().fg(Color::Cyan).bg(Color::DarkGray)
+                    Style::default().fg(THEME.aqua).bg(THEME.bg3)
                 } else {
-                    Style::default().fg(Color::White).bg(Color::DarkGray)
+                    Style::default().fg(THEME.fg).bg(THEME.bg3)
                 };
                 let repo_display = repo_names.get(*selected_repo)
                     .map(|(name, _)| name.as_str())
                     .unwrap_or("");
                 let repo_prompt = Line::from(vec![
-                    Span::styled(" Repo:   ", Style::default().fg(Color::White).bg(Color::DarkGray)),
+                    Span::styled(" Repo:   ", Style::default().fg(THEME.fg).bg(THEME.bg3)),
                     Span::styled(format!("‹ {} ›", repo_display), repo_style),
                 ]);
                 buf.set_line(dialog_area.x, row, &repo_prompt, dialog_area.width);
@@ -311,14 +312,14 @@ pub fn render_control_panel(
             }
 
             let input_style = if selected_archived.is_some() {
-                Style::default().fg(Color::Yellow).bg(Color::DarkGray)
+                Style::default().fg(THEME.yellow).bg(THEME.bg3)
             } else if *active_field == DialogField::Branch {
-                Style::default().fg(Color::Cyan).bg(Color::DarkGray)
+                Style::default().fg(THEME.aqua).bg(THEME.bg3)
             } else {
-                Style::default().fg(Color::White).bg(Color::DarkGray)
+                Style::default().fg(THEME.fg).bg(THEME.bg3)
             };
             let prompt = Line::from(vec![
-                Span::styled(" Branch: ", Style::default().fg(Color::White).bg(Color::DarkGray)),
+                Span::styled(" Branch: ", Style::default().fg(THEME.fg).bg(THEME.bg3)),
                 Span::styled(format!("{}_", input), input_style),
             ]);
             buf.set_line(dialog_area.x, row, &prompt, dialog_area.width);
@@ -331,7 +332,7 @@ pub fn render_control_panel(
                 );
                 let archived_line = Line::from(Span::styled(
                     archived_label,
-                    Style::default().fg(Color::Yellow).bg(Color::DarkGray),
+                    Style::default().fg(THEME.yellow).bg(THEME.bg3),
                 ));
                 buf.set_line(dialog_area.x, row, &archived_line, dialog_area.width);
                 row += 1;
@@ -341,7 +342,7 @@ pub fn render_control_panel(
                     let preview = format!(" \u{2192} {}", archived[*idx]);
                     let preview_line = Line::from(Span::styled(
                         preview,
-                        Style::default().fg(Color::Yellow).bg(Color::DarkGray).add_modifier(Modifier::BOLD),
+                        Style::default().fg(THEME.yellow).bg(THEME.bg3).add_modifier(Modifier::BOLD),
                     ));
                     buf.set_line(dialog_area.x, row, &preview_line, dialog_area.width);
                     row += 1;
@@ -354,7 +355,7 @@ pub fn render_control_panel(
             let hint_y = dialog_area.bottom().saturating_sub(1);
             let hint = Line::from(Span::styled(
                 " Enter confirm \u{00B7} Esc cancel",
-                Style::default().fg(Color::Gray).bg(Color::DarkGray),
+                Style::default().fg(THEME.grey1).bg(THEME.bg3),
             ));
             buf.set_line(dialog_area.x, hint_y, &hint, dialog_area.width);
         }
@@ -368,24 +369,24 @@ pub fn render_control_panel(
             };
             for y in dialog_area.y..dialog_area.bottom() {
                 for x in dialog_area.x..dialog_area.right() {
-                    buf[(x, y)].set_char(' ').set_style(Style::default().bg(Color::DarkGray));
+                    buf[(x, y)].set_char(' ').set_style(Style::default().bg(THEME.bg3));
                 }
             }
             let title = Line::from(Span::styled(
                 " Archive worktree",
-                Style::default().fg(Color::Yellow).bg(Color::DarkGray).add_modifier(Modifier::BOLD),
+                Style::default().fg(THEME.yellow).bg(THEME.bg3).add_modifier(Modifier::BOLD),
             ));
             buf.set_line(dialog_area.x, dialog_area.y, &title, dialog_area.width);
 
             let prompt = Line::from(Span::styled(
                 format!(" Remove {}? (y/n)", name),
-                Style::default().fg(Color::White).bg(Color::DarkGray),
+                Style::default().fg(THEME.fg).bg(THEME.bg3),
             ));
             buf.set_line(dialog_area.x, dialog_area.y + 1, &prompt, dialog_area.width);
 
             let hint = Line::from(Span::styled(
                 " Branch kept \u{00B7} restore with n",
-                Style::default().fg(Color::Gray).bg(Color::DarkGray),
+                Style::default().fg(THEME.grey1).bg(THEME.bg3),
             ));
             buf.set_line(dialog_area.x, dialog_area.y + 2, &hint, dialog_area.width);
         }
@@ -395,11 +396,11 @@ pub fn render_control_panel(
     // Fixed footer bar
     let wt_count = state.worktrees.len();
     let new_style = if focused {
-        Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
+        Style::default().fg(THEME.green).add_modifier(Modifier::BOLD)
     } else {
-        Style::default().fg(Color::DarkGray)
+        Style::default().fg(THEME.grey0)
     };
-    let hint_style = Style::default().fg(Color::DarkGray);
+    let hint_style = Style::default().fg(THEME.grey0);
     let count_str = format!("{} wt", wt_count);
     let footer_line = Line::from(vec![
         Span::styled(" [+]New", new_style),
