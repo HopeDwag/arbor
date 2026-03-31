@@ -1,5 +1,5 @@
 use anyhow::Result;
-use crossterm::event::{self, Event, MouseEventKind};
+use crossterm::event::{self, Event, KeyCode, MouseEventKind};
 use ratatui::layout::{Constraint, Direction, Layout};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -60,6 +60,7 @@ pub struct App {
     pub scroll_offset: usize,
     flash_message: Option<String>,
     flash_expires: Instant,
+    pub filter: Option<String>,
 }
 
 impl App {
@@ -125,6 +126,7 @@ impl App {
             scroll_offset: 0,
             flash_message: None,
             flash_expires: Instant::now(),
+            filter: None,
         };
         app.sidebar_state.worktrees = app.build_worktree_list()?;
         app.sidebar_width = app.calculate_panel_width();
@@ -380,6 +382,29 @@ impl App {
             if event::poll(Duration::from_millis(16))? {
                 match event::read()? {
                     Event::Key(key) => {
+                        // Filter mode consumes keys
+                        if self.filter.is_some() {
+                            match key.code {
+                                KeyCode::Esc => {
+                                    self.filter = None;
+                                }
+                                KeyCode::Backspace => {
+                                    if let Some(ref mut f) = self.filter {
+                                        f.pop();
+                                    }
+                                }
+                                KeyCode::Char(c) if !key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) => {
+                                    if let Some(ref mut f) = self.filter {
+                                        f.push(c);
+                                    }
+                                }
+                                KeyCode::Enter => {
+                                    self.filter = None;
+                                }
+                                _ => {}
+                            }
+                            continue;
+                        }
                         // Dialogs consume raw key events first
                         if self.handle_dialog_key(key)? {
                             continue;
@@ -590,6 +615,27 @@ impl App {
                             WorkflowStatus::Done => "Done",
                         };
                         self.flash(format!("Status: {}", label));
+                    }
+                }
+            }
+            Action::Filter => {
+                self.filter = Some(String::new());
+            }
+            Action::OpenPR => {
+                let idx = self.sidebar_state.selected;
+                if idx < self.sidebar_state.worktrees.len() {
+                    let wt = &self.sidebar_state.worktrees[idx];
+                    if let Some(cache) = self.github_caches.get(&wt.repo_root) {
+                        if let Some(pr) = cache.get(&wt.branch) {
+                            let _ = std::process::Command::new("open")
+                                .arg(&pr.url)
+                                .spawn();
+                            self.flash(format!("Opened PR #{}", pr.number));
+                        } else {
+                            self.flash("No PR for this branch");
+                        }
+                    } else {
+                        self.flash("No PR for this branch");
                     }
                 }
             }
