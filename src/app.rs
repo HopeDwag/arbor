@@ -6,7 +6,7 @@ use ratatui::text::{Line, Span};
 use ratatui::DefaultTerminal;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::github::SharedGitHubCache;
 use crate::keys::{self, Action, Focus};
@@ -58,6 +58,8 @@ pub struct App {
     drag_state: Option<DragState>,
     github_caches: HashMap<PathBuf, SharedGitHubCache>,
     pub scroll_offset: usize,
+    flash_message: Option<String>,
+    flash_expires: Instant,
 }
 
 impl App {
@@ -121,6 +123,8 @@ impl App {
             drag_state: None,
             github_caches,
             scroll_offset: 0,
+            flash_message: None,
+            flash_expires: Instant::now(),
         };
         app.sidebar_state.worktrees = app.build_worktree_list()?;
         app.sidebar_width = app.calculate_panel_width();
@@ -201,11 +205,20 @@ impl App {
         width.clamp(20, 60)
     }
 
+    fn flash(&mut self, msg: impl Into<String>) {
+        self.flash_message = Some(msg.into());
+        self.flash_expires = Instant::now() + Duration::from_secs(2);
+    }
+
     pub fn run(&mut self, terminal: &mut DefaultTerminal) -> Result<()> {
         let size = terminal.size()?;
         self.ensure_pty_for_selected(size.height, size.width)?;
 
         while !self.should_quit {
+            if self.flash_message.is_some() && Instant::now() >= self.flash_expires {
+                self.flash_message = None;
+            }
+
             terminal.draw(|frame| {
                 // Top-level: main area + status bar
                 let outer = Layout::default()
@@ -355,6 +368,7 @@ impl App {
                     self.pty_sessions.remove(key);
                     let size = terminal.size()?;
                     self.ensure_pty_for_selected(size.height, size.width)?;
+                    self.flash("Shell restarted");
                 }
             }
 
@@ -403,6 +417,20 @@ impl App {
 
     fn build_status_line(&self, width: u16) -> Line<'static> {
         let bg = Color::DarkGray;
+
+        // Show flash message if active
+        if let Some(ref msg) = self.flash_message {
+            let flash_style = Style::default().fg(Color::Green).bg(bg).add_modifier(Modifier::BOLD);
+            let text = format!(" {} ", msg);
+            let used = text.len();
+            let remaining = (width as usize).saturating_sub(used);
+            let mut spans = vec![Span::styled(text, flash_style)];
+            if remaining > 0 {
+                spans.push(Span::styled(" ".repeat(remaining), Style::default().bg(bg)));
+            }
+            return Line::from(spans);
+        }
+
         let fg = Color::White;
         let key_style = Style::default().fg(Color::Cyan).bg(bg).add_modifier(Modifier::BOLD);
         let label_style = Style::default().fg(fg).bg(bg);
@@ -556,6 +584,13 @@ impl App {
                             entry.status = status;
                             let _ = config.save(&repo_root);
                         }
+                        let label = match status {
+                            WorkflowStatus::Queued => "Queued",
+                            WorkflowStatus::InProgress => "In Progress",
+                            WorkflowStatus::InReview => "In Review",
+                            WorkflowStatus::Done => "Done",
+                        };
+                        self.flash(format!("Status: {}", label));
                     }
                 }
             }
@@ -654,6 +689,7 @@ impl App {
                         let size = crossterm::terminal::size()?;
                         self.ensure_pty_for_selected(size.1, size.0)?;
                         self.focus = Focus::Terminal;
+                        self.flash("Created worktree");
                     }
                     KeyCode::Down => {
                         *active_field = match active_field {
@@ -729,6 +765,7 @@ impl App {
                         self.dialog = Dialog::None;
                         let size = crossterm::terminal::size()?;
                         self.ensure_pty_for_selected(size.1, size.0)?;
+                        self.flash("Archived worktree");
                     }
                     KeyCode::Char('n') | KeyCode::Esc => self.dialog = Dialog::None,
                     _ => {}
