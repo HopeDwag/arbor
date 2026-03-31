@@ -35,7 +35,7 @@ pub fn render_control_panel(
     };
 
     let block = Block::default()
-        .title(" arbor ")
+        .title(" \u{1F332} arbor ")
         .borders(Borders::ALL)
         .border_style(border_style);
 
@@ -75,10 +75,10 @@ pub fn render_control_panel(
         .as_millis() as u64;
 
     let groups: &[(WorkflowStatus, &str)] = &[
-        (WorkflowStatus::InProgress, "IN PROGRESS"),
-        (WorkflowStatus::InReview, "IN REVIEW"),
-        (WorkflowStatus::Queued, "QUEUED"),
-        (WorkflowStatus::Done, "DONE"),
+        (WorkflowStatus::InProgress, "\u{1F33F} IN PROGRESS"),
+        (WorkflowStatus::InReview, "\u{1F343} IN REVIEW"),
+        (WorkflowStatus::Queued, "\u{1F331} QUEUED"),
+        (WorkflowStatus::Done, "\u{1F342} DONE"),
     ];
 
     // Clear layout tracking
@@ -419,7 +419,7 @@ pub fn render_control_panel(
         Style::default().fg(THEME.grey0)
     };
     let hint_style = Style::default().fg(THEME.grey0);
-    let count_str = format!("{} wt", wt_count);
+    let count_str = format!("\u{1F332} {} worktrees", wt_count);
     let footer_line = Line::from(vec![
         Span::styled(" [+]New", new_style),
         Span::styled("  Archive  Status", hint_style),
