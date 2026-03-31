@@ -4,6 +4,8 @@ use ratatui::style::{Color, Modifier, Style};
 use vt100_ctt::Parser;
 use std::sync::{Arc, Mutex};
 
+use crate::ui::theme::THEME;
+
 /// Render the PTY screen into a ratatui buffer and return the cursor position
 /// plus the clamped scrollback offset.
 /// Returns (cursor_row, cursor_col, clamped_scroll_offset).
@@ -72,7 +74,7 @@ pub fn render_terminal(
         let label = format!(" [+{}] ", clamped);
         let label_len = label.len().min(cols as usize);
         let start_x = area.x + cols - label_len as u16;
-        let indicator_style = Style::reset().fg(Color::Black).bg(Color::Yellow).add_modifier(Modifier::BOLD);
+        let indicator_style = Style::reset().fg(THEME.bg0).bg(THEME.yellow).add_modifier(Modifier::BOLD);
         for (i, ch) in label.chars().take(label_len).enumerate() {
             buf[(start_x + i as u16, area.y)].set_char(ch).set_style(indicator_style);
         }
@@ -83,7 +85,7 @@ pub fn render_terminal(
 }
 
 fn dim_style(style: Style) -> Style {
-    let fg = style.fg.map(dim_color).unwrap_or(Color::DarkGray);
+    let fg = style.fg.map(dim_color).unwrap_or(THEME.grey0);
     let bg = style.bg.unwrap_or(Color::Reset);
     // Strip modifiers when dimmed for a muted look
     Style::reset().fg(fg).bg(bg).add_modifier(Modifier::DIM)
@@ -102,7 +104,18 @@ fn dim_color(color: Color) -> Color {
 fn convert_vt100_color(color: vt100_ctt::Color) -> Color {
     match color {
         vt100_ctt::Color::Default => Color::Reset,
-        vt100_ctt::Color::Idx(i) => Color::Indexed(i),
+        vt100_ctt::Color::Idx(i) => match i {
+            0 => THEME.bg3,
+            1 | 9 => THEME.red,
+            2 | 10 => THEME.green,
+            3 | 11 => THEME.yellow,
+            4 | 12 => THEME.blue,
+            5 | 13 => THEME.purple,
+            6 | 14 => THEME.aqua,
+            7 | 15 => THEME.fg,
+            8 => THEME.bg4,
+            _ => Color::Indexed(i),
+        },
         vt100_ctt::Color::Rgb(r, g, b) => Color::Rgb(r, g, b),
     }
 }
