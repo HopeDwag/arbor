@@ -20,6 +20,7 @@ pub struct PrInfo {
     pub url: String,
 }
 
+#[derive(Default)]
 pub struct GitHubCache {
     prs: HashMap<String, PrInfo>,
 }
@@ -93,13 +94,18 @@ pub struct SharedGitHubCache {
 
 impl SharedGitHubCache {
     /// Create and start background refresh thread.
+    /// Starts with empty cache — first refresh happens in background, not blocking startup.
     pub fn new(repo_root: &Path) -> Self {
-        let cache = GitHubCache::refresh(repo_root);
-        let inner = Arc::new(Mutex::new(cache));
+        let inner = Arc::new(Mutex::new(GitHubCache::default()));
 
         let bg_inner = Arc::clone(&inner);
         let bg_path = repo_root.to_path_buf();
         std::thread::spawn(move || {
+            // First refresh happens immediately in background
+            let new_cache = GitHubCache::refresh(&bg_path);
+            if let Ok(mut guard) = bg_inner.lock() {
+                *guard = new_cache;
+            }
             loop {
                 std::thread::sleep(Duration::from_secs(30));
                 let new_cache = GitHubCache::refresh(&bg_path);
@@ -118,11 +124,15 @@ impl SharedGitHubCache {
         guard.get(branch).cloned()
     }
 
-    /// Force an immediate refresh (e.g. on 'r' key).
+    /// Trigger a background refresh (non-blocking).
     pub fn force_refresh(&self, repo_root: &Path) {
-        let new_cache = GitHubCache::refresh(repo_root);
-        if let Ok(mut guard) = self.inner.lock() {
-            *guard = new_cache;
-        }
+        let inner = Arc::clone(&self.inner);
+        let path = repo_root.to_path_buf();
+        std::thread::spawn(move || {
+            let new_cache = GitHubCache::refresh(&path);
+            if let Ok(mut guard) = inner.lock() {
+                *guard = new_cache;
+            }
+        });
     }
 }

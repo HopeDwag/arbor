@@ -2,7 +2,7 @@ use anyhow::{bail, Context, Result};
 use git2::Repository;
 use std::path::{Path, PathBuf};
 
-use super::status::{self, WorktreeStatus};
+use super::status::WorktreeStatus;
 use crate::persistence::WorkflowStatus;
 
 pub struct WorktreeInfo {
@@ -44,8 +44,6 @@ impl WorktreeManager {
             .as_ref()
             .and_then(|h| h.shorthand().map(String::from))
             .unwrap_or_else(|| "HEAD".to_string());
-        let main_status = status::check_status(&self.repo_root).ok();
-        let (ahead, behind) = status::ahead_behind(&self.repo_root);
 
         let main_name = self.repo_root
             .file_name()
@@ -57,11 +55,11 @@ impl WorktreeManager {
             branch: main_branch,
             path: self.repo_root.clone(),
             is_main: true,
-            status: main_status,
+            status: None,
             workflow_status: WorkflowStatus::InProgress,
             short_name: None,
-            ahead,
-            behind,
+            ahead: 0,
+            behind: 0,
             repo_name: None,
             repo_root: self.repo_root.clone(),
         });
@@ -78,19 +76,17 @@ impl WorktreeManager {
                 .ok()
                 .and_then(|h| h.shorthand().map(String::from))
                 .unwrap_or_else(|| name.to_string());
-            let wt_status = status::check_status(&wt_path).ok();
-            let (ahead, behind) = status::ahead_behind(&wt_path);
 
             result.push(WorktreeInfo {
                 name: name.to_string(),
                 branch,
                 path: wt_path,
                 is_main: false,
-                status: wt_status,
+                status: None,
                 workflow_status: WorkflowStatus::Queued,
                 short_name: None,
-                ahead,
-                behind,
+                ahead: 0,
+                behind: 0,
                 repo_name: None,
                 repo_root: self.repo_root.clone(),
             });
@@ -144,17 +140,8 @@ impl WorktreeManager {
     }
 
     pub fn delete(&self, name: &str, force: bool) -> Result<()> {
-        // Check if it's the main worktree
-        let worktrees = self.list()?;
-        let wt = worktrees
-            .iter()
-            .find(|w| w.name == name)
+        let worktree = self.repo.find_worktree(name)
             .context("Worktree not found")?;
-        if wt.is_main {
-            bail!("Cannot delete the main worktree");
-        }
-
-        let worktree = self.repo.find_worktree(name)?;
         if matches!(worktree.is_locked(), Ok(git2::WorktreeLockStatus::Locked(_))) {
             if !force {
                 bail!("Worktree is locked");

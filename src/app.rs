@@ -851,6 +851,17 @@ impl App {
     }
 
     fn ensure_pty_for_selected(&mut self, rows: u16, cols: u16) -> Result<()> {
+        // Lazily compute status and ahead/behind for the selected worktree
+        {
+            let wt = &mut self.sidebar_state.worktrees[self.sidebar_state.selected];
+            if wt.status.is_none() {
+                wt.status = crate::worktree::check_status(&wt.path).ok();
+                let (ahead, behind) = crate::worktree::ahead_behind(&wt.path);
+                wt.ahead = ahead;
+                wt.behind = behind;
+            }
+        }
+
         let wt = &self.sidebar_state.worktrees[self.sidebar_state.selected];
         let key = wt.path.clone();
         if !self.pty_sessions.contains_key(&key) {
