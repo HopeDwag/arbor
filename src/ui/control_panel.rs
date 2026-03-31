@@ -129,6 +129,8 @@ pub fn render_control_panel(
 
         for (flat_idx, wt) in &group_wts {
             let is_selected = *flat_idx == state.selected;
+            let position_in_group = group_wts.iter().position(|(idx, _)| *idx == *flat_idx).unwrap();
+            let is_last = position_in_group == group_wts.len() - 1;
 
             // Activity icon
             let icon = if let Some(&last_output) = pty_last_outputs.get(&wt.path) {
@@ -162,9 +164,23 @@ pub fn render_control_panel(
                 Style::default().fg(THEME.fg)
             };
 
-            // Build row 1: icon + name + tags
+            // Tree gutter characters
+            let trunk_color = if is_selected && focused { THEME.green } else { THEME.bg2 };
+            let fork = if is_last { "\u{2514}\u{2500}" } else { "\u{251C}\u{2500}" };
+            let leaf_color = if is_selected && focused {
+                THEME.green
+            } else {
+                match wt.workflow_status {
+                    WorkflowStatus::InReview => THEME.blue,
+                    WorkflowStatus::Done => THEME.aqua,
+                    _ => THEME.bg3,
+                }
+            };
+
+            // Build row 1: tree gutter + icon + name + tags
             let mut line1_spans = vec![
-                Span::raw("  "),
+                Span::styled(fork, Style::default().fg(trunk_color)),
+                Span::styled("\u{25CF}", Style::default().fg(leaf_color)),
                 icon,
                 Span::styled(display_name, name_style),
             ];
@@ -191,16 +207,18 @@ pub fn render_control_panel(
             let line1 = Line::from(line1_spans);
 
             // Build row 2: commit message + stats
+            let trunk_cont = if is_last { "   " } else { "\u{2502}  " };
             let commit_msg = wt.commit_message.as_deref().unwrap_or("");
-            let truncated_msg: String = if commit_msg.len() > 40 {
-                format!("{}…", &commit_msg[..39])
+            let truncated_msg: String = if commit_msg.len() > 36 {
+                format!("{}…", &commit_msg[..35])
             } else {
                 commit_msg.to_string()
             };
 
             let mut line2_spans = vec![
+                Span::styled(trunk_cont, Style::default().fg(trunk_color)),
                 Span::styled(
-                    format!("    {}", truncated_msg),
+                    truncated_msg,
                     Style::default().fg(THEME.grey0),
                 ),
             ];
