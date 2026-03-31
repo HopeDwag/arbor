@@ -881,7 +881,7 @@ impl App {
         }
     }
 
-    fn ensure_pty_for_selected(&mut self, rows: u16, cols: u16) -> Result<()> {
+    pub fn ensure_pty_for_selected(&mut self, rows: u16, cols: u16) -> Result<()> {
         if self.sidebar_state.worktrees.is_empty()
             || self.sidebar_state.selected >= self.sidebar_state.worktrees.len()
         {
