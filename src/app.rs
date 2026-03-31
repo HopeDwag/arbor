@@ -196,20 +196,20 @@ impl App {
                 if let Some(ref rn) = wt.repo_name {
                     len += rn.len() + 1; // "repo/branch"
                 }
+                // Account for dirty indicator (" M")
+                if wt.is_dirty { len += 2; }
+                // Account for PR badge (e.g. " #123 Draft")
+                if wt.pr.is_some() { len += 10; }
                 // Account for ahead/behind indicators (e.g. " ↑3 ↓2")
                 if wt.ahead > 0 { len += 3; }
                 if wt.behind > 0 { len += 3; }
-                // Account for PR badge (e.g. " #123")
-                if let Some(cache) = self.github_caches.get(&wt.repo_root) {
-                    if cache.get(&wt.branch).is_some() { len += 7; }
-                }
                 len
             })
             .max()
             .unwrap_or(0);
         // Padding: 2 (border) + 2 (indent) + 2 (icon + space) + 2 (right padding) = 8
         let width = (max_name_len + 8) as u16;
-        width.clamp(20, 60)
+        width.clamp(28, 60)
     }
 
     fn flash(&mut self, msg: impl Into<String>) {

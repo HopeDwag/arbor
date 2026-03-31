@@ -5,8 +5,9 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, List, ListItem, ListState, StatefulWidget, Widget};
 
 use crate::app::{Dialog, DialogField};
+use crate::github::PrState;
 use crate::persistence::WorkflowStatus;
-use crate::worktree::WorktreeInfo;
+use crate::worktree::{WorktreeInfo, format_age};
 
 pub struct ControlPanelState {
     pub selected: usize,
@@ -118,20 +119,85 @@ pub fn render_control_panel(
                 Style::default().fg(Color::White)
             };
 
-            let name_line = Line::from(vec![
+            // Build row 1: icon + name + tags
+            let mut line1_spans = vec![
                 Span::raw("  "),
                 icon,
                 Span::styled(display_name, name_style),
-            ]);
+            ];
+
+            // Dirty tag
+            if wt.is_dirty {
+                line1_spans.push(Span::styled(" M", Style::default().fg(Color::Yellow)));
+            }
+
+            // PR tag
+            if let Some((pr_num, ref pr_state)) = wt.pr {
+                let (pr_color, pr_suffix) = match pr_state {
+                    PrState::Open => (Color::Green, ""),
+                    PrState::Draft => (Color::Yellow, " Draft"),
+                    PrState::Merged => (Color::Magenta, " Merged"),
+                    PrState::Closed => (Color::Red, " Closed"),
+                };
+                line1_spans.push(Span::styled(
+                    format!(" #{}{}", pr_num, pr_suffix),
+                    Style::default().fg(pr_color),
+                ));
+            }
+
+            let line1 = Line::from(line1_spans);
+
+            // Build row 2: commit message + stats
+            let commit_msg = wt.commit_message.as_deref().unwrap_or("");
+            let truncated_msg: String = if commit_msg.len() > 40 {
+                format!("{}…", &commit_msg[..39])
+            } else {
+                commit_msg.to_string()
+            };
+
+            let mut line2_spans = vec![
+                Span::styled(
+                    format!("    {}", truncated_msg),
+                    Style::default().fg(Color::DarkGray),
+                ),
+            ];
+
+            if wt.ahead > 0 {
+                line2_spans.push(Span::styled(
+                    format!(" \u{2191}{}", wt.ahead),
+                    Style::default().fg(Color::Cyan),
+                ));
+            }
+            if wt.behind > 0 {
+                line2_spans.push(Span::styled(
+                    format!(" \u{2193}{}", wt.behind),
+                    Style::default().fg(Color::Yellow),
+                ));
+            }
+            if wt.last_commit_age_secs < u64::MAX {
+                line2_spans.push(Span::styled(
+                    format!(" {}", format_age(wt.last_commit_age_secs)),
+                    Style::default().fg(Color::DarkGray),
+                ));
+            }
+
+            let line2 = Line::from(line2_spans);
 
             flat_to_visual.push(items.len());
-            items.push(ListItem::new(name_line));
-            // Track row -> flat_idx mapping
-            let abs_row = (inner.y + visual_row as u16) as usize;
-            if state.row_to_flat_idx.len() <= abs_row {
-                state.row_to_flat_idx.resize(abs_row + 1, None);
+            items.push(ListItem::new(vec![line1, line2]));
+            // Track both rows -> flat_idx mapping
+            let abs_row1 = (inner.y + visual_row as u16) as usize;
+            if state.row_to_flat_idx.len() <= abs_row1 {
+                state.row_to_flat_idx.resize(abs_row1 + 1, None);
             }
-            state.row_to_flat_idx[abs_row] = Some(*flat_idx);
+            state.row_to_flat_idx[abs_row1] = Some(*flat_idx);
+            visual_row += 1;
+
+            let abs_row2 = (inner.y + visual_row as u16) as usize;
+            if state.row_to_flat_idx.len() <= abs_row2 {
+                state.row_to_flat_idx.resize(abs_row2 + 1, None);
+            }
+            state.row_to_flat_idx[abs_row2] = Some(*flat_idx);
             visual_row += 1;
         }
 
@@ -154,6 +220,12 @@ pub fn render_control_panel(
         "  [+] new worktree",
         plus_style,
     ))));
+    // Map [+] row so mouse clicks can target it
+    let abs_row = (inner.y + visual_row as u16) as usize;
+    if state.row_to_flat_idx.len() <= abs_row {
+        state.row_to_flat_idx.resize(abs_row + 1, None);
+    }
+    state.row_to_flat_idx[abs_row] = Some(state.worktrees.len());
 
     let mut list_state = ListState::default();
     if state.selected < state.worktrees.len() {
