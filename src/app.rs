@@ -1,7 +1,7 @@
 use anyhow::Result;
 use crossterm::event::{self, Event, KeyCode, MouseEventKind};
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::DefaultTerminal;
 use std::collections::HashMap;
@@ -13,6 +13,7 @@ use crate::keys::{self, Action, Focus};
 use crate::persistence::{ArborConfig, WorkflowStatus};
 use crate::pty::PtySession;
 use crate::ui;
+use crate::ui::theme::THEME;
 use crate::ui::ControlPanelState;
 use crate::worktree::{WorktreeInfo, WorktreeManager};
 
@@ -272,7 +273,7 @@ impl App {
                     let mut row1_spans: Vec<Span> = vec![
                         Span::styled(
                             format!(" \u{2387} {} ", wt.branch),
-                            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                            Style::default().fg(THEME.aqua).add_modifier(Modifier::BOLD),
                         ),
                     ];
 
@@ -284,15 +285,15 @@ impl App {
                     };
                     row1_spans.push(Span::styled(
                         format!(" {} ", status_label),
-                        Style::default().fg(Color::DarkGray),
+                        Style::default().fg(THEME.grey0),
                     ));
 
                     if let Some(pr) = self.github_caches.get(&wt.repo_root).and_then(|c| c.get(&wt.branch)) {
                         let (state_label, color) = match pr.state {
-                            crate::github::PrState::Open => ("Open", Color::Green),
-                            crate::github::PrState::Draft => ("Draft", Color::Yellow),
-                            crate::github::PrState::Merged => ("Merged", Color::Magenta),
-                            crate::github::PrState::Closed => ("Closed", Color::Red),
+                            crate::github::PrState::Open => ("Open", THEME.green),
+                            crate::github::PrState::Draft => ("Draft", THEME.yellow),
+                            crate::github::PrState::Merged => ("Merged", THEME.purple),
+                            crate::github::PrState::Closed => ("Closed", THEME.red),
                         };
                         row1_spans.push(Span::styled(
                             format!(" #{} {} ", pr.number, state_label),
@@ -301,10 +302,10 @@ impl App {
                     }
 
                     if wt.ahead > 0 {
-                        row1_spans.push(Span::styled(format!(" \u{2191}{}", wt.ahead), Style::default().fg(Color::Cyan)));
+                        row1_spans.push(Span::styled(format!(" \u{2191}{}", wt.ahead), Style::default().fg(THEME.aqua)));
                     }
                     if wt.behind > 0 {
-                        row1_spans.push(Span::styled(format!(" \u{2193}{}", wt.behind), Style::default().fg(Color::Yellow)));
+                        row1_spans.push(Span::styled(format!(" \u{2193}{}", wt.behind), Style::default().fg(THEME.yellow)));
                     }
 
                     let detail_row1 = Line::from(row1_spans);
@@ -313,13 +314,13 @@ impl App {
                     let mut row2_spans: Vec<Span> = vec![
                         Span::styled(
                             format!(" {} ", wt.path.display()),
-                            Style::default().fg(Color::DarkGray),
+                            Style::default().fg(THEME.grey0),
                         ),
                     ];
 
                     if let Some(pr) = self.github_caches.get(&wt.repo_root).and_then(|c| c.get(&wt.branch)) {
-                        row2_spans.push(Span::styled("\u{2502} ", Style::default().fg(Color::DarkGray)));
-                        row2_spans.push(Span::styled(pr.url.clone(), Style::default().fg(Color::DarkGray)));
+                        row2_spans.push(Span::styled("\u{2502} ", Style::default().fg(THEME.grey0)));
+                        row2_spans.push(Span::styled(pr.url.clone(), Style::default().fg(THEME.grey0)));
                     }
 
                     let detail_row2 = Line::from(row2_spans);
@@ -443,11 +444,11 @@ impl App {
     }
 
     fn build_status_line(&self, width: u16) -> Line<'static> {
-        let bg = Color::DarkGray;
+        let bg = THEME.bg1;
 
         // Show flash message if active
         if let Some(ref msg) = self.flash_message {
-            let flash_style = Style::default().fg(Color::Green).bg(bg).add_modifier(Modifier::BOLD);
+            let flash_style = Style::default().fg(THEME.green).bg(bg).add_modifier(Modifier::BOLD);
             let text = format!(" {} ", msg);
             let used = text.len();
             let remaining = (width as usize).saturating_sub(used);
@@ -458,10 +459,10 @@ impl App {
             return Line::from(spans);
         }
 
-        let fg = Color::White;
-        let key_style = Style::default().fg(Color::Cyan).bg(bg).add_modifier(Modifier::BOLD);
+        let fg = THEME.fg;
+        let key_style = Style::default().fg(THEME.green).bg(bg).add_modifier(Modifier::BOLD);
         let label_style = Style::default().fg(fg).bg(bg);
-        let sep_style = Style::default().fg(Color::Gray).bg(bg);
+        let sep_style = Style::default().fg(THEME.grey0).bg(bg);
 
         let sep = Span::styled(" │ ", sep_style);
 
