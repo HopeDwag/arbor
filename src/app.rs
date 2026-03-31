@@ -169,6 +169,11 @@ impl App {
                     }
                 }
                 Self::apply_pr_auto_status(&self.github_caches, wt);
+                if let Some(cache) = self.github_caches.get(root) {
+                    if let Some(pr_info) = cache.get(&wt.branch) {
+                        wt.pr = Some((pr_info.number, pr_info.state));
+                    }
+                }
             }
 
             all.extend(worktrees);
@@ -447,14 +452,8 @@ impl App {
                 spans.push(Span::styled(" sidebar", label_style));
             }
             Focus::Sidebar => {
-                spans.push(Span::styled("j/k", key_style));
-                spans.push(Span::styled(" navigate", label_style));
-                spans.push(sep.clone());
                 spans.push(Span::styled("Enter", key_style));
                 spans.push(Span::styled(" select", label_style));
-                spans.push(sep.clone());
-                spans.push(Span::styled("s", key_style));
-                spans.push(Span::styled(" status", label_style));
                 spans.push(sep.clone());
                 spans.push(Span::styled("n", key_style));
                 spans.push(Span::styled(" new", label_style));
@@ -462,8 +461,8 @@ impl App {
                 spans.push(Span::styled("a", key_style));
                 spans.push(Span::styled(" archive", label_style));
                 spans.push(sep.clone());
-                spans.push(Span::styled("Shift+→", key_style));
-                spans.push(Span::styled(" terminal", label_style));
+                spans.push(Span::styled("s", key_style));
+                spans.push(Span::styled(" status", label_style));
                 spans.push(sep.clone());
                 spans.push(Span::styled("q", key_style));
                 spans.push(Span::styled(" quit", label_style));
@@ -744,14 +743,19 @@ impl App {
                 let name = name.clone();
                 match key.code {
                     KeyCode::Char('y') => {
-                        // Remove PTY session for this worktree (dropping it kills the child)
                         let wt = &self.sidebar_state.worktrees[self.sidebar_state.selected];
                         let key = wt.path.clone();
                         let repo_root = wt.repo_root.clone();
-                        self.pty_sessions.remove(&key);
+                        // Drop the PTY session in a background thread to avoid blocking the UI
+                        if let Some(session) = self.pty_sessions.remove(&key) {
+                            std::thread::spawn(move || drop(session));
+                        }
                         if self.active_worktree.as_ref() == Some(&key) {
                             self.active_worktree = None;
                         }
+                        // Dismiss dialog and flash immediately so user sees feedback
+                        self.dialog = Dialog::None;
+                        self.flash("Archiving worktree…");
 
                         if let Some(mgr) = self.managers.get(&repo_root) {
                             mgr.delete(&name, false)?;
@@ -762,7 +766,6 @@ impl App {
                         }
                         self.apply_config();
                         self.sidebar_state.selected = 0;
-                        self.dialog = Dialog::None;
                         let size = crossterm::terminal::size()?;
                         self.ensure_pty_for_selected(size.1, size.0)?;
                         self.flash("Archived worktree");
@@ -809,10 +812,13 @@ impl App {
                     if let Some(idx) = clicked_idx {
                         self.sidebar_state.selected = idx;
                         self.focus = Focus::Sidebar;
-                        // Start drag if not main worktree
-                        if idx < self.sidebar_state.worktrees.len()
+                        if idx == self.sidebar_state.worktrees.len() {
+                            // Clicked [+] new worktree button
+                            self.handle_action(Action::SidebarCreate)?;
+                        } else if idx < self.sidebar_state.worktrees.len()
                             && !self.sidebar_state.worktrees[idx].is_main
                         {
+                            // Start drag if not main worktree
                             self.drag_state = Some(DragState {
                                 worktree_idx: idx,
                                 dragging: false,
@@ -882,6 +888,11 @@ impl App {
                 }
             }
             Self::apply_pr_auto_status(&self.github_caches, wt);
+            if let Some(cache) = self.github_caches.get(&wt.repo_root) {
+                if let Some(pr_info) = cache.get(&wt.branch) {
+                    wt.pr = Some((pr_info.number, pr_info.state));
+                }
+            }
         }
         self.sidebar_width = self.calculate_panel_width();
     }

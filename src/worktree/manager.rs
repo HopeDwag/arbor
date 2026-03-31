@@ -23,6 +23,7 @@ pub struct WorktreeInfo {
     pub last_commit_age_secs: u64,
     pub commit_message: Option<String>,
     pub is_dirty: bool,
+    pub pr: Option<(u32, crate::github::PrState)>,
 }
 
 pub struct WorktreeManager {
@@ -102,6 +103,7 @@ impl WorktreeManager {
             last_commit_age_secs: commit_age_secs(&self.repo),
             commit_message: commit_summary(&self.repo),
             is_dirty: is_repo_dirty(&self.repo),
+            pr: None,
         });
 
         // Additional worktrees
@@ -133,6 +135,7 @@ impl WorktreeManager {
                 last_commit_age_secs: age,
                 commit_message: commit_summary(&wt_repo),
                 is_dirty: is_repo_dirty(&wt_repo),
+                pr: None,
             });
         }
 
