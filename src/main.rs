@@ -13,9 +13,6 @@ struct Cli {
     #[arg(long)]
     worktree: Option<String>,
 
-    /// Key to toggle focus between sidebar and terminal (default: ctrl-a)
-    #[arg(long, default_value = "ctrl-a")]
-    toggle_key: String,
 }
 
 fn main() -> Result<()> {
