@@ -252,6 +252,7 @@ impl App {
                     self.focus == Focus::Sidebar,
                     self.spinner_frame,
                     &pty_last_outputs,
+                    &self.filter,
                 );
 
                 // Right pane: detail bar (2 rows) + terminal
@@ -487,6 +488,12 @@ impl App {
                 spans.push(sep.clone());
                 spans.push(Span::styled("q", key_style));
                 spans.push(Span::styled(" quit", label_style));
+                spans.push(sep.clone());
+                spans.push(Span::styled("/", key_style));
+                spans.push(Span::styled(" filter", label_style));
+                spans.push(sep.clone());
+                spans.push(Span::styled("Ctrl+G", key_style));
+                spans.push(Span::styled(" PR", label_style));
             }
         }
 

@@ -16,6 +16,7 @@ pub struct ControlPanelState {
     pub group_regions: Vec<(WorkflowStatus, u16, u16)>, // (status, start_row, end_row)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn render_control_panel(
     state: &mut ControlPanelState,
     dialog: &Dialog,
@@ -24,6 +25,7 @@ pub fn render_control_panel(
     focused: bool,
     spinner_frame: u8,
     pty_last_outputs: &std::collections::HashMap<std::path::PathBuf, u64>,
+    filter: &Option<String>,
 ) {
     let border_style = if focused {
         Style::default().fg(Color::Cyan)
@@ -52,6 +54,20 @@ pub fn render_control_panel(
         height: footer_height,
     };
 
+    let mut list_area = list_area;
+    if let Some(ref filter_text) = filter {
+        let filter_line = Line::from(vec![
+            Span::styled(" \u{2315} ", Style::default().fg(Color::Cyan)),
+            Span::styled(format!("{}_", filter_text), Style::default().fg(Color::Cyan)),
+        ]);
+        buf.set_line(list_area.x, list_area.y, &filter_line, list_area.width);
+        list_area = Rect {
+            y: list_area.y + 1,
+            height: list_area.height.saturating_sub(1),
+            ..list_area
+        };
+    }
+
     let now_millis = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
@@ -77,6 +93,13 @@ pub fn render_control_panel(
         let group_wts: Vec<(usize, &WorktreeInfo)> = state.worktrees.iter()
             .enumerate()
             .filter(|(_, wt)| wt.workflow_status == *status)
+            .filter(|(_, wt)| {
+                if let Some(ref f) = filter {
+                    wt.branch.to_lowercase().contains(&f.to_lowercase())
+                } else {
+                    true
+                }
+            })
             .collect();
 
         if group_wts.is_empty() {
@@ -85,10 +108,17 @@ pub fn render_control_panel(
 
         // Group header - record start_row as absolute screen row
         let group_start_row = list_area.y + visual_row as u16;
-        items.push(ListItem::new(Line::from(Span::styled(
-            format!(" {}", label),
-            Style::default().fg(Color::DarkGray).add_modifier(Modifier::BOLD),
-        ))));
+        let count = group_wts.len();
+        items.push(ListItem::new(Line::from(vec![
+            Span::styled(
+                format!(" {}", label),
+                Style::default().fg(Color::DarkGray).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                format!("  {}", count),
+                Style::default().fg(Color::Gray),
+            ),
+        ])));
         // Ensure row_to_flat_idx is long enough, map header row to None
         let abs_row = (list_area.y + visual_row as u16) as usize;
         if state.row_to_flat_idx.len() <= abs_row {
