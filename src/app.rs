@@ -110,7 +110,6 @@ impl App {
             sidebar_state: ControlPanelState {
                 selected: 0,
                 worktrees: Vec::new(),
-                show_plus: true,
                 row_to_flat_idx: Vec::new(),
                 group_regions: Vec::new(),
             },
@@ -522,7 +521,7 @@ impl App {
                 }
             }
             Action::SidebarDown => {
-                let max = self.sidebar_state.worktrees.len();
+                let max = self.sidebar_state.worktrees.len().saturating_sub(1);
                 if self.sidebar_state.selected < max {
                     self.sidebar_state.selected += 1;
                 }
@@ -532,8 +531,6 @@ impl App {
                     let size = crossterm::terminal::size()?;
                     self.ensure_pty_for_selected(size.1, size.0)?;
                     self.focus = Focus::Terminal;
-                } else {
-                    self.handle_action(Action::SidebarCreate)?;
                 }
             }
             Action::SidebarCreate => {

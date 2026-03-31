@@ -12,7 +12,6 @@ use crate::worktree::{WorktreeInfo, format_age};
 pub struct ControlPanelState {
     pub selected: usize,
     pub worktrees: Vec<WorktreeInfo>,
-    pub show_plus: bool,
     pub row_to_flat_idx: Vec<Option<usize>>,
     pub group_regions: Vec<(WorkflowStatus, u16, u16)>, // (status, start_row, end_row)
 }
@@ -39,6 +38,19 @@ pub fn render_control_panel(
 
     let inner = block.inner(area);
     block.render(area, buf);
+    let footer_height = 1u16;
+    let list_area = Rect {
+        x: inner.x,
+        y: inner.y,
+        width: inner.width,
+        height: inner.height.saturating_sub(footer_height),
+    };
+    let footer_area = Rect {
+        x: inner.x,
+        y: inner.bottom().saturating_sub(footer_height),
+        width: inner.width,
+        height: footer_height,
+    };
 
     let now_millis = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -72,13 +84,13 @@ pub fn render_control_panel(
         }
 
         // Group header - record start_row as absolute screen row
-        let group_start_row = inner.y + visual_row as u16;
+        let group_start_row = list_area.y + visual_row as u16;
         items.push(ListItem::new(Line::from(Span::styled(
             format!(" {}", label),
             Style::default().fg(Color::DarkGray).add_modifier(Modifier::BOLD),
         ))));
         // Ensure row_to_flat_idx is long enough, map header row to None
-        let abs_row = (inner.y + visual_row as u16) as usize;
+        let abs_row = (list_area.y + visual_row as u16) as usize;
         if state.row_to_flat_idx.len() <= abs_row {
             state.row_to_flat_idx.resize(abs_row + 1, None);
         }
@@ -186,14 +198,14 @@ pub fn render_control_panel(
             flat_to_visual.push(items.len());
             items.push(ListItem::new(vec![line1, line2]));
             // Track both rows -> flat_idx mapping
-            let abs_row1 = (inner.y + visual_row as u16) as usize;
+            let abs_row1 = (list_area.y + visual_row as u16) as usize;
             if state.row_to_flat_idx.len() <= abs_row1 {
                 state.row_to_flat_idx.resize(abs_row1 + 1, None);
             }
             state.row_to_flat_idx[abs_row1] = Some(*flat_idx);
             visual_row += 1;
 
-            let abs_row2 = (inner.y + visual_row as u16) as usize;
+            let abs_row2 = (list_area.y + visual_row as u16) as usize;
             if state.row_to_flat_idx.len() <= abs_row2 {
                 state.row_to_flat_idx.resize(abs_row2 + 1, None);
             }
@@ -202,38 +214,16 @@ pub fn render_control_panel(
         }
 
         // Record group region (start_row .. current row)
-        let group_end_row = inner.y + visual_row as u16;
+        let group_end_row = list_area.y + visual_row as u16;
         state.group_regions.push((*status, group_start_row, group_end_row));
 
         items.push(ListItem::new(Line::from("")));
         visual_row += 1;
     }
 
-    // [+] new worktree button
-    let plus_style = if state.selected == state.worktrees.len() {
-        Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
-    } else {
-        Style::default().fg(Color::DarkGray)
-    };
-    let plus_visual_idx = items.len();
-    items.push(ListItem::new(Line::from(Span::styled(
-        "  [+] new worktree",
-        plus_style,
-    ))));
-    // Map [+] row so mouse clicks can target it
-    let abs_row = (inner.y + visual_row as u16) as usize;
-    if state.row_to_flat_idx.len() <= abs_row {
-        state.row_to_flat_idx.resize(abs_row + 1, None);
-    }
-    state.row_to_flat_idx[abs_row] = Some(state.worktrees.len());
-
     let mut list_state = ListState::default();
-    if state.selected < state.worktrees.len() {
-        if let Some(&visual_idx) = flat_to_visual.get(state.selected) {
-            list_state.select(Some(visual_idx));
-        }
-    } else {
-        list_state.select(Some(plus_visual_idx));
+    if let Some(&visual_idx) = flat_to_visual.get(state.selected) {
+        list_state.select(Some(visual_idx));
     }
 
     let highlight = if focused {
@@ -243,7 +233,7 @@ pub fn render_control_panel(
     };
     let list = List::new(items).highlight_style(highlight);
 
-    StatefulWidget::render(list, inner, buf, &mut list_state);
+    StatefulWidget::render(list, list_area, buf, &mut list_state);
 
     // Render dialog overlay at bottom of sidebar
     match dialog {
@@ -371,4 +361,23 @@ pub fn render_control_panel(
         }
         Dialog::None => {}
     }
+
+    // Fixed footer bar
+    let wt_count = state.worktrees.len();
+    let new_style = if focused {
+        Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(Color::DarkGray)
+    };
+    let hint_style = Style::default().fg(Color::DarkGray);
+    let count_str = format!("{} wt", wt_count);
+    let footer_line = Line::from(vec![
+        Span::styled(" [+]New", new_style),
+        Span::styled("  Archive  Status", hint_style),
+    ]);
+    buf.set_line(footer_area.x, footer_area.y, &footer_line, footer_area.width);
+
+    let count_span = Span::styled(&count_str, hint_style);
+    let count_x = footer_area.right().saturating_sub(count_str.len() as u16 + 1);
+    buf.set_line(count_x, footer_area.y, &Line::from(count_span), footer_area.width);
 }
