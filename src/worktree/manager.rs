@@ -1,6 +1,7 @@
 use anyhow::{bail, Context, Result};
 use git2::Repository;
 use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::status::WorktreeStatus;
 use crate::persistence::WorkflowStatus;
@@ -17,11 +18,33 @@ pub struct WorktreeInfo {
     pub behind: u32,
     pub repo_name: Option<String>,
     pub repo_root: PathBuf,
+    /// Eagerly computed commit age for sort ordering.
+    /// Populated during `list()` so sorting works before lazy status check.
+    pub last_commit_age_secs: u64,
 }
 
 pub struct WorktreeManager {
     repo: Repository,
     repo_root: PathBuf,
+}
+
+/// Read the HEAD commit timestamp and return age in seconds.
+/// Returns `u64::MAX` if the age cannot be determined.
+fn commit_age_secs(repo: &Repository) -> u64 {
+    let head = match repo.head() {
+        Ok(h) => h,
+        Err(_) => return u64::MAX,
+    };
+    let commit = match head.peel_to_commit() {
+        Ok(c) => c,
+        Err(_) => return u64::MAX,
+    };
+    let commit_time = commit.time().seconds() as u64;
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    now.saturating_sub(commit_time)
 }
 
 impl WorktreeManager {
@@ -62,6 +85,7 @@ impl WorktreeManager {
             behind: 0,
             repo_name: None,
             repo_root: self.repo_root.clone(),
+            last_commit_age_secs: commit_age_secs(&self.repo),
         });
 
         // Additional worktrees
@@ -77,6 +101,7 @@ impl WorktreeManager {
                 .and_then(|h| h.shorthand().map(String::from))
                 .unwrap_or_else(|| name.to_string());
 
+            let age = commit_age_secs(&wt_repo);
             result.push(WorktreeInfo {
                 name: name.to_string(),
                 branch,
@@ -89,6 +114,7 @@ impl WorktreeManager {
                 behind: 0,
                 repo_name: None,
                 repo_root: self.repo_root.clone(),
+                last_commit_age_secs: age,
             });
         }
 
@@ -97,11 +123,7 @@ impl WorktreeManager {
             match (a.is_main, b.is_main) {
                 (true, false) => std::cmp::Ordering::Less,
                 (false, true) => std::cmp::Ordering::Greater,
-                _ => {
-                    let age_a = a.status.as_ref().map(|s| s.last_commit_age_secs).unwrap_or(u64::MAX);
-                    let age_b = b.status.as_ref().map(|s| s.last_commit_age_secs).unwrap_or(u64::MAX);
-                    age_a.cmp(&age_b)
-                }
+                _ => a.last_commit_age_secs.cmp(&b.last_commit_age_secs),
             }
         });
 
