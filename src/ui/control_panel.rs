@@ -422,7 +422,7 @@ pub fn render_control_panel(
     let count_str = format!("\u{1F332} {} worktrees", wt_count);
     let footer_line = Line::from(vec![
         Span::styled(" [+]New", new_style),
-        Span::styled("  Archive  Status", hint_style),
+        Span::styled("  Archive", hint_style),
     ]);
     buf.set_line(footer_area.x, footer_area.y, &footer_line, footer_area.width);
 

@@ -13,54 +13,17 @@ fn test_main_worktree_defaults_to_in_progress() {
 }
 
 #[test]
-fn test_status_cycle_noop_on_main() {
-    let dir = common::init_test_repo();
-    let mut app = arbor::app::App::new(dir.path()).unwrap();
-    app.focus = Focus::Sidebar;
-    app.sidebar_state.selected = 0;
-    app.handle_action(arbor::keys::Action::StatusCycle).unwrap();
-    assert_eq!(app.sidebar_state.worktrees[0].workflow_status, WorkflowStatus::InProgress);
-}
-
-#[test]
-fn test_status_cycle_on_non_main() {
+fn test_non_main_worktree_defaults_to_backlog() {
     let dir = common::init_test_repo();
     let mgr = arbor::worktree::WorktreeManager::open(dir.path()).unwrap();
     mgr.create("feature-a").unwrap();
 
-    let mut app = arbor::app::App::new(dir.path()).unwrap();
+    let app = arbor::app::App::new(dir.path()).unwrap();
     let non_main_idx = app.sidebar_state.worktrees.iter()
         .position(|w| !w.is_main)
         .unwrap();
-    app.sidebar_state.selected = non_main_idx;
-    app.focus = Focus::Sidebar;
 
     assert_eq!(app.sidebar_state.worktrees[non_main_idx].workflow_status, WorkflowStatus::Backlog);
-
-    app.handle_action(arbor::keys::Action::StatusCycle).unwrap();
-    assert_eq!(app.sidebar_state.worktrees[non_main_idx].workflow_status, WorkflowStatus::Queued);
-
-    app.handle_action(arbor::keys::Action::StatusCycle).unwrap();
-    assert_eq!(app.sidebar_state.worktrees[non_main_idx].workflow_status, WorkflowStatus::InProgress);
-}
-
-#[test]
-fn test_status_cycle_persists_to_file() {
-    let dir = common::init_test_repo();
-    let mgr = arbor::worktree::WorktreeManager::open(dir.path()).unwrap();
-    mgr.create("feature-b").unwrap();
-
-    let mut app = arbor::app::App::new(dir.path()).unwrap();
-    let non_main_idx = app.sidebar_state.worktrees.iter()
-        .position(|w| !w.is_main)
-        .unwrap();
-    app.sidebar_state.selected = non_main_idx;
-    app.focus = Focus::Sidebar;
-
-    app.handle_action(arbor::keys::Action::StatusCycle).unwrap();
-
-    let config = arbor::persistence::ArborConfig::load(dir.path());
-    assert_eq!(config.worktrees["feature-b"].status, WorkflowStatus::Queued);
 }
 
 #[test]

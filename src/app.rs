@@ -39,7 +39,6 @@ pub enum Dialog {
 }
 
 struct DragState {
-    worktree_idx: usize,
     dragging: bool,
 }
 
@@ -226,20 +225,47 @@ impl App {
                 self.flash_message = None;
             }
 
-            // Spinner auto-promote: active PTY output temporarily pulls InReview to InProgress
+            // Runtime-driven status: compute display status from PTY state + PR state
+            // Save original statuses so we can restore after rendering
             let now_ms = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_millis() as u64;
-            let mut spinner_promoted: Vec<usize> = Vec::new();
-            for (i, wt) in self.sidebar_state.worktrees.iter_mut().enumerate() {
-                if wt.workflow_status == WorkflowStatus::InReview {
+            let saved_statuses: Vec<WorkflowStatus> = self.sidebar_state.worktrees
+                .iter()
+                .map(|wt| wt.workflow_status)
+                .collect();
+            for wt in &mut self.sidebar_state.worktrees {
+                if wt.is_main { continue; }
+
+                // PR overrides first
+                let has_open_pr = wt.pr.as_ref().is_some_and(|(_, state)| {
+                    matches!(state, crate::github::PrState::Open | crate::github::PrState::Draft)
+                });
+
+                if has_open_pr {
+                    // Check if spinner is active — pulls InReview back to InProgress
                     if let Some(pty) = self.pty_sessions.get(&wt.path) {
                         let last = pty.last_output_millis();
                         if last > 0 && now_ms.saturating_sub(last) < 500 {
                             wt.workflow_status = WorkflowStatus::InProgress;
-                            spinner_promoted.push(i);
+                        } else {
+                            wt.workflow_status = WorkflowStatus::InReview;
                         }
+                    } else {
+                        wt.workflow_status = WorkflowStatus::InReview;
+                    }
+                } else {
+                    // Runtime state: no PTY → Backlog, PTY idle → Queued, PTY active → InProgress
+                    if let Some(pty) = self.pty_sessions.get(&wt.path) {
+                        let last = pty.last_output_millis();
+                        if last > 0 && now_ms.saturating_sub(last) < 500 {
+                            wt.workflow_status = WorkflowStatus::InProgress;
+                        } else {
+                            wt.workflow_status = WorkflowStatus::Queued;
+                        }
+                    } else {
+                        wt.workflow_status = WorkflowStatus::Backlog;
                     }
                 }
             }
@@ -383,9 +409,9 @@ impl App {
                 frame.render_widget(status_line, outer[1]);
             })?;
 
-            // Restore InReview for worktrees that were temporarily promoted for display
-            for i in spinner_promoted {
-                self.sidebar_state.worktrees[i].workflow_status = WorkflowStatus::InReview;
+            // Restore original statuses after rendering
+            for (i, status) in saved_statuses.into_iter().enumerate() {
+                self.sidebar_state.worktrees[i].workflow_status = status;
             }
 
             self.spinner_frame = self.spinner_frame.wrapping_add(1);
@@ -507,9 +533,6 @@ impl App {
                 spans.push(Span::styled("a", key_style));
                 spans.push(Span::styled(" archive", label_style));
                 spans.push(sep.clone());
-                spans.push(Span::styled("s", key_style));
-                spans.push(Span::styled(" status", label_style));
-                spans.push(sep.clone());
                 spans.push(Span::styled("q", key_style));
                 spans.push(Span::styled(" quit", label_style));
                 spans.push(sep.clone());
@@ -556,19 +579,6 @@ impl App {
             }
             Action::SidebarSelect => {
                 if self.sidebar_state.selected < self.sidebar_state.worktrees.len() {
-                    // Auto-promote Backlog/Queued to InProgress on first select
-                    let wt = &self.sidebar_state.worktrees[self.sidebar_state.selected];
-                    if !wt.is_main && matches!(wt.workflow_status, WorkflowStatus::Backlog | WorkflowStatus::Queued) {
-                        let repo_root = wt.repo_root.clone();
-                        let branch = wt.branch.clone();
-                        let wt = &mut self.sidebar_state.worktrees[self.sidebar_state.selected];
-                        wt.workflow_status = WorkflowStatus::InProgress;
-                        if let Some(config) = self.configs.get_mut(&repo_root) {
-                            let entry = config.worktrees.entry(branch).or_default();
-                            entry.status = WorkflowStatus::InProgress;
-                            let _ = config.save(&repo_root);
-                        }
-                    }
                     let size = crossterm::terminal::size()?;
                     self.ensure_pty_for_selected(size.1, size.0)?;
                     self.focus = Focus::Terminal;
@@ -629,38 +639,6 @@ impl App {
                             name.clone()
                         };
                         self.dialog = Dialog::ArchiveConfirm(idx, name, display_name);
-                    }
-                }
-            }
-            Action::StatusCycle => {
-                let idx = self.sidebar_state.selected;
-                if idx < self.sidebar_state.worktrees.len() {
-                    let wt = &self.sidebar_state.worktrees[idx];
-                    if !wt.is_main {
-                        match wt.workflow_status.next() {
-                            Some(next_status) => {
-                                let repo_root = wt.repo_root.clone();
-                                let branch = wt.branch.clone();
-                                let wt = &mut self.sidebar_state.worktrees[idx];
-                                wt.workflow_status = next_status;
-                                if let Some(config) = self.configs.get_mut(&repo_root) {
-                                    let entry = config.worktrees.entry(branch).or_default();
-                                    entry.status = next_status;
-                                    let _ = config.save(&repo_root);
-                                }
-                                let label = match next_status {
-                                    WorkflowStatus::Backlog => "Backlog",
-                                    WorkflowStatus::Queued => "Queued",
-                                    WorkflowStatus::InProgress => "In Progress",
-                                    WorkflowStatus::InReview => "In Review",
-                                };
-                                self.flash(format!("Status: {}", label));
-                            }
-                            None => {
-                                // Cycling past InProgress → archive
-                                self.handle_action(Action::SidebarArchive)?;
-                            }
-                        }
                     }
                 }
             }
@@ -912,7 +890,6 @@ impl App {
                         {
                             // Start drag if not main worktree
                             self.drag_state = Some(DragState {
-                                worktree_idx: idx,
                                 dragging: false,
                             });
                         }
@@ -927,32 +904,8 @@ impl App {
                 }
             }
             MouseEventKind::Up(_) => {
-                if let Some(ds) = self.drag_state.take() {
-                    if ds.dragging {
-                        // Find the target group based on mouse row
-                        let row = mouse.row;
-                        let target_status = self.sidebar_state.group_regions.iter()
-                            .find(|(_status, start, end)| row >= *start && row < *end)
-                            .map(|(status, _, _)| *status);
-                        if let Some(new_status) = target_status {
-                            let idx = ds.worktree_idx;
-                            if idx < self.sidebar_state.worktrees.len() {
-                                let wt = &mut self.sidebar_state.worktrees[idx];
-                                if !wt.is_main && wt.workflow_status != new_status {
-                                    wt.workflow_status = new_status;
-                                    let repo_root = wt.repo_root.clone();
-                                    let branch = wt.branch.clone();
-                                    if let Some(config) = self.configs.get_mut(&repo_root) {
-                                        let entry = config.worktrees.entry(branch).or_default();
-                                        entry.status = new_status;
-                                        let _ = config.save(&repo_root);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    // If not dragging, it was a click — already handled on Down
-                }
+                // Drag-to-change-status removed — statuses are now runtime-driven
+                self.drag_state.take();
             }
             MouseEventKind::ScrollUp => {
                 if self.focus == Focus::Terminal {

@@ -50,21 +50,15 @@ fn test_multi_repo_mains_pinned_to_in_progress() {
 }
 
 #[test]
-fn test_multi_repo_persistence_isolation() {
+fn test_multi_repo_non_main_defaults_to_backlog() {
     let parent = TempDir::new().unwrap();
     let alpha_path = common::init_repo_in(parent.path(), "alpha");
-    let beta_path = common::init_repo_in(parent.path(), "beta");
+    common::init_repo_in(parent.path(), "beta");
     let alpha_mgr = arbor::worktree::WorktreeManager::open(&alpha_path).unwrap();
     alpha_mgr.create("feature-a").unwrap();
 
-    let mut app = arbor::app::App::new(parent.path()).unwrap();
-    let idx = app.sidebar_state.worktrees.iter()
-        .position(|w| w.branch == "feature-a").unwrap();
-    app.sidebar_state.selected = idx;
-    app.handle_action(arbor::keys::Action::StatusCycle).unwrap();
-
-    let alpha_config = arbor::persistence::ArborConfig::load(&alpha_path);
-    assert!(alpha_config.worktrees.contains_key("feature-a"));
-    let beta_config = arbor::persistence::ArborConfig::load(&beta_path);
-    assert!(beta_config.worktrees.is_empty());
+    let app = arbor::app::App::new(parent.path()).unwrap();
+    let wt = app.sidebar_state.worktrees.iter()
+        .find(|w| w.branch == "feature-a").unwrap();
+    assert_eq!(wt.workflow_status, arbor::persistence::WorkflowStatus::Backlog);
 }

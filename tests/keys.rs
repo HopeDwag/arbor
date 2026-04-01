@@ -6,9 +6,9 @@ fn make_key(code: KeyCode) -> KeyEvent {
 }
 
 #[test]
-fn test_s_key_triggers_status_cycle() {
+fn test_s_key_is_noop() {
     let action = handle_key(make_key(KeyCode::Char('s')), &Focus::Sidebar);
-    assert!(matches!(action, Action::StatusCycle));
+    assert!(matches!(action, Action::None));
 }
 
 #[test]
