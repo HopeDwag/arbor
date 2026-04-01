@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Arbor — Git Worktree Manager</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #111;
+    font-family: 'JetBrains Mono', 'Menlo', 'Consolas', monospace;
+    font-size: 13px;
+    color: #c8c8c8;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+    padding: 32px 24px;
+    gap: 32px;
+  }
+
+  h1 {
+    color: #888;
+    font-size: 14px;
+    font-weight: 400;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  .scene-label {
+    color: #666;
+    font-size: 12px;
+    margin-bottom: 6px;
+    text-align: center;
+  }
+
+  .scene-label em {
+    color: #00bcd4;
+    font-style: normal;
+  }
+
+  /* ── Terminal chrome ── */
+  .terminal-window {
+    background: #000;
+    border-radius: 8px;
+    overflow: hidden;
+    width: 1000px;
+    max-width: 100%;
+    box-shadow: 0 16px 48px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.06);
+  }
+
+  .title-bar {
+    background: #1c1c1c;
+    padding: 9px 14px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+
+  .dot { width: 12px; height: 12px; border-radius: 50%; }
+  .dot.red { background: #ff5f57; }
+  .dot.yellow { background: #febc2e; }
+  .dot.green { background: #28c840; }
+
+  .title-bar .title {
+    flex: 1;
+    text-align: center;
+    color: #555;
+    font-size: 12px;
+  }
+
+  /* ── App layout ── */
+  .app {
+    display: flex;
+    height: 460px;
+  }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    width: 230px;
+    min-width: 230px;
+    border: 1px solid #333;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+  }
+
+  .sidebar.focused {
+    border-color: #00bcd4;
+  }
+
+  .sidebar-title {
+    position: absolute;
+    top: -1px;
+    left: 6px;
+    background: #000;
+    padding: 0 4px;
+    color: #333;
+    font-size: 13px;
+    z-index: 1;
+    transform: translateY(-50%);
+  }
+
+  .sidebar.focused .sidebar-title {
+    color: #00bcd4;
+  }
+
+  .sidebar-content {
+    padding: 6px 0;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  .group-header {
+    color: #555;
+    font-weight: 700;
+    padding: 2px 8px;
+    font-size: 11px;
+    letter-spacing: 0.5px;
+  }
+
+  .wt {
+    padding: 1px 8px 1px 14px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+    white-space: nowrap;
+    line-height: 1.5;
+  }
+
+  .wt:hover { background: rgba(255,255,255,0.03); }
+
+  /* Selected + focused sidebar */
+  .sidebar.focused .wt.selected {
+    background: #333;
+  }
+  .sidebar.focused .wt.selected .wt-name {
+    color: #00bcd4;
+    font-weight: 700;
+  }
+
+  /* Selected + unfocused sidebar */
+  .sidebar:not(.focused) .wt.selected .wt-name {
+    color: #555;
+    font-weight: 700;
+  }
+
+  .wt-icon { width: 1.2em; text-align: center; display: inline-block; }
+  .wt-name { color: #c8c8c8; }
+
+  .icon-dot      { color: #555; }
+  .icon-active   { color: #febc2e; }
+  .icon-spinner  { color: #00bcd4; }
+  .icon-queued   { color: #555; }
+  .icon-done     { color: #28c840; }
+  .icon-review   { color: #00bcd4; }
+
+  .group-spacer { height: 4px; }
+
+  .new-wt {
+    padding: 1px 8px 1px 14px;
+    color: #555;
+    cursor: pointer;
+    line-height: 1.5;
+  }
+  .new-wt:hover { color: #00bcd4; }
+
+  /* ── Dialog overlay ── */
+  .dialog {
+    position: absolute;
+    bottom: 4px;
+    left: 4px;
+    right: 4px;
+    background: #333;
+    padding: 0;
+    z-index: 10;
+    display: none;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .dialog.visible { display: block; }
+
+  .dialog-row {
+    padding: 0 8px;
+    white-space: nowrap;
+  }
+
+  .dialog-row.title {
+    color: #00bcd4;
+    font-weight: 700;
+  }
+
+  .dialog-row .field-label { color: #c8c8c8; }
+  .dialog-row .field-value { color: #00bcd4; }
+  .dialog-row .field-cursor { background: #00bcd4; color: #000; }
+  .dialog-row.hint { color: #888; }
+  .dialog-row.archived { color: #febc2e; }
+
+  /* ── Right pane ── */
+  .right-pane {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .header-bar {
+    padding: 1px 8px;
+    display: flex;
+    gap: 8px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: #555;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  .header-bar .branch { color: #00bcd4; }
+
+  .info-bar {
+    padding: 1px 8px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 13px;
+    line-height: 1.5;
+    white-space: nowrap;
+  }
+  .pr-open    { color: #28c840; }
+  .pr-draft   { color: #febc2e; }
+  .pr-merged  { color: #b48ead; }
+  .pr-number  { font-weight: 700; }
+  .pr-sep     { color: #555; }
+  .pr-url     { color: #555; }
+  .sync-ahead { color: #00bcd4; }
+  .sync-behind{ color: #febc2e; }
+
+  /* ── Terminal area ── */
+  .term {
+    flex: 1;
+    padding: 2px 8px;
+    overflow: hidden;
+    font-size: 13px;
+    line-height: 1.4;
+  }
+
+  .term.dimmed { opacity: 0.45; }
+
+  .term .line { white-space: pre; }
+  .term .prompt  { color: #28c840; font-weight: 700; }
+  .term .cmd     { color: #c8c8c8; }
+  .term .out     { color: #888; }
+  .term .ok      { color: #28c840; }
+  .term .warn    { color: #febc2e; }
+  .term .err     { color: #ff5f57; }
+  .term .path    { color: #00bcd4; }
+  .term .hash    { color: #febc2e; }
+  .term .subject { color: #c8c8c8; }
+
+  .cursor-block {
+    background: #c8c8c8;
+    color: #000;
+    animation: blink 1s step-end infinite;
+  }
+  @keyframes blink { 50% { background: transparent; color: transparent; } }
+
+  /* ── Status bar ── */
+  .status-bar {
+    background: #333;
+    padding: 1px 8px;
+    line-height: 1.5;
+    font-size: 13px;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+
+  .status-bar .k { color: #00bcd4; font-weight: 700; }
+  .status-bar .l { color: #c8c8c8; }
+  .status-bar .sep { color: #888; }
+  .status-bar .flash { color: #28c840; font-weight: 700; }
+</style>
+</head>
+<body>
+
+<h1>arbor &mdash; tui mockups</h1>
+
+<!-- ════════════════════════════════════════════════════ -->
+<!-- SCENE 1: Terminal focused (normal working state)    -->
+<!-- ════════════════════════════════════════════════════ -->
+<div>
+  <div class="scene-label">Terminal focused &mdash; sidebar border is <em>gray</em>, terminal is bright</div>
+  <div class="terminal-window">
+    <div class="title-bar">
+      <div class="dot red"></div>
+      <div class="dot yellow"></div>
+      <div class="dot green"></div>
+      <div class="title">arbor &mdash; ~/Repos/Enablis/fusion-platform</div>
+    </div>
+    <div class="app">
+      <!-- Sidebar: unfocused -->
+      <div class="sidebar">
+        <span class="sidebar-title"> arbor </span>
+        <div class="sidebar-content">
+          <div class="group-header">IN PROGRESS</div>
+          <div class="wt">
+            <span class="wt-icon icon-dot">&middot;</span>
+            <span class="wt-name">main</span>
+          </div>
+          <div class="wt selected">
+            <span class="wt-icon icon-active">!</span>
+            <span class="wt-name">feat/agent-routing</span>
+          </div>
+          <div class="wt">
+            <span class="wt-icon icon-dot">&middot;</span>
+            <span class="wt-name">fix/auth-refresh</span>
+          </div>
+          <div class="group-spacer"></div>
+
+          <div class="group-header">IN REVIEW</div>
+          <div class="wt">
+            <span class="wt-icon icon-review">&#x25CB;</span>
+            <span class="wt-name">feat/sqs-batching</span>
+          </div>
+          <div class="wt">
+            <span class="wt-icon icon-review">&#x25CB;</span>
+            <span class="wt-name">feat/dashboard-v2</span>
+          </div>
+          <div class="group-spacer"></div>
+
+          <div class="group-header">QUEUED</div>
+          <div class="wt">
+            <span class="wt-icon icon-queued">&#x25B6;</span>
+            <span class="wt-name">chore/tf-upgrade</span>
+          </div>
+          <div class="group-spacer"></div>
+
+          <div class="group-header">DONE</div>
+          <div class="wt">
+            <span class="wt-icon icon-done">&#x2713;</span>
+            <span class="wt-name">fix/cors-headers</span>
+          </div>
+          <div class="group-spacer"></div>
+
+          <div class="new-wt">[+] new worktree</div>
+        </div>
+      </div>
+
+      <!-- Right pane -->
+      <div class="right-pane">
+        <div class="header-bar">
+          <span>~/.../fusion-platform-worktrees/feat/agent-routing</span>
+          <span class="branch">&#x2387; feat/agent-routing</span>
+        </div>
+        <div class="info-bar">
+          <span class="pr-open pr-number">#247</span>
+          <span class="pr-open">Open</span>
+          <span class="pr-sep">&middot;</span>
+          <span class="pr-url">github.com/enablis/fusion-platform/pull/247</span>
+          <span style="margin-left:8px" class="sync-ahead">&#x2191;3</span>
+          <span class="sync-behind">&#x2193;1</span>
+        </div>
+        <div class="term">
+<div class="line"><span class="prompt">~/f-p-wt/feat/agent-routing</span></div>
+<div class="line"><span class="prompt">&#x276F;</span> <span class="cmd">git log --oneline -5</span></div>
+<div class="line"><span class="hash">a1f3c2d</span> <span class="subject">feat: add multi-agent routing with priority queues</span></div>
+<div class="line"><span class="hash">8e2b1a9</span> <span class="subject">fix: handle edge case in agent handoff timeout</span></div>
+<div class="line"><span class="hash">c4d5e6f</span> <span class="subject">refactor: extract routing logic into separate module</span></div>
+<div class="line"><span class="hash">1b2c3d4</span> <span class="subject">test: add integration tests for routing fallback</span></div>
+<div class="line"><span class="hash">9f8e7d6</span> <span class="subject">chore: update agent SDK to v2.3.1</span></div>
+<div class="line"></div>
+<div class="line"><span class="prompt">&#x276F;</span> <span class="cmd">cargo test agent_routing</span></div>
+<div class="line"><span class="out">   Compiling fusion-agents v0.4.0</span></div>
+<div class="line"><span class="out">    Finished `test` profile in 3.42s</span></div>
+<div class="line"><span class="out">     Running unittests src/lib.rs</span></div>
+<div class="line"></div>
+<div class="line"><span class="out">running 4 tests</span></div>
+<div class="line"><span class="out">test agent_routing::test_priority_queue ....... </span><span class="ok">ok</span></div>
+<div class="line"><span class="out">test agent_routing::test_fallback_handler ..... </span><span class="ok">ok</span></div>
+<div class="line"><span class="out">test agent_routing::test_timeout_handoff ...... </span><span class="ok">ok</span></div>
+<div class="line"><span class="out">test agent_routing::test_multi_agent_dispatch . </span><span class="ok">ok</span></div>
+<div class="line"></div>
+<div class="line"><span class="out">test result: </span><span class="ok">ok</span><span class="out">. 4 passed; 0 failed; 0 ignored</span></div>
+<div class="line"></div>
+<div class="line"><span class="prompt">&#x276F;</span> <span class="cursor-block"> </span></div>
+        </div>
+        <div class="status-bar">
+          <span class="k">Shift+&#x2190;</span><span class="l"> sidebar</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════ -->
+<!-- SCENE 2: Sidebar focused (navigation state)         -->
+<!-- ════════════════════════════════════════════════════ -->
+<div>
+  <div class="scene-label">Sidebar focused &mdash; border is <em>cyan</em>, terminal is dimmed, full keybindings shown</div>
+  <div class="terminal-window">
+    <div class="title-bar">
+      <div class="dot red"></div>
+      <div class="dot yellow"></div>
+      <div class="dot green"></div>
+      <div class="title">arbor &mdash; ~/Repos/Enablis/fusion-platform</div>
+    </div>
+    <div class="app">
+      <!-- Sidebar: focused -->
+      <div class="sidebar focused">
+        <span class="sidebar-title"> arbor </span>
+        <div class="sidebar-content">
+          <div class="group-header">IN PROGRESS</div>
+          <div class="wt">
+            <span class="wt-icon icon-dot">&middot;</span>
+            <span class="wt-name">main</span>
+          </div>
+          <div class="wt selected">
+            <span class="wt-icon icon-active">!</span>
+            <span class="wt-name">feat/agent-routing</span>
+          </div>
+          <div class="wt">
+            <span class="wt-icon icon-dot">&middot;</span>
+            <span class="wt-name">fix/auth-refresh</span>
+          </div>
+          <div class="group-spacer"></div>
+
+          <div class="group-header">IN REVIEW</div>
+          <div class="wt">
+            <span class="wt-icon icon-review">&#x25CB;</span>
+            <span class="wt-name">feat/sqs-batching</span>
+          </div>
+          <div class="wt">
+            <span class="wt-icon icon-review">&#x25CB;</span>
+            <span class="wt-name">feat/dashboard-v2</span>
+          </div>
+          <div class="group-spacer"></div>
+
+          <div class="group-header">QUEUED</div>
+          <div class="wt">
+            <span class="wt-icon icon-queued">&#x25B6;</span>
+            <span class="wt-name">chore/tf-upgrade</span>
+          </div>
+          <div class="group-spacer"></div>
+
+          <div class="group-header">DONE</div>
+          <div class="wt">
+            <span class="wt-icon icon-done">&#x2713;</span>
+            <span class="wt-name">fix/cors-headers</span>
+          </div>
+          <div class="group-spacer"></div>
+
+          <div class="new-wt">[+] new worktree</div>
+        </div>
+      </div>
+
+      <!-- Right pane -->
+      <div class="right-pane">
+        <div class="header-bar">
+          <span>~/.../fusion-platform-worktrees/feat/agent-routing</span>
+          <span class="branch">&#x2387; feat/agent-routing</span>
+        </div>
+        <div class="info-bar">
+          <span class="pr-open pr-number">#247</span>
+          <span class="pr-open">Open</span>
+          <span class="pr-sep">&middot;</span>
+          <span class="pr-url">github.com/enablis/fusion-platform/pull/247</span>
+          <span style="margin-left:8px" class="sync-ahead">&#x2191;3</span>
+          <span class="sync-behind">&#x2193;1</span>
+        </div>
+        <div class="term dimmed">
+<div class="line"><span class="prompt">~/f-p-wt/feat/agent-routing</span></div>
+<div class="line"><span class="prompt">&#x276F;</span> <span class="cmd">git log --oneline -5</span></div>
+<div class="line"><span class="hash">a1f3c2d</span> <span class="subject">feat: add multi-agent routing with priority queues</span></div>
+<div class="line"><span class="hash">8e2b1a9</span> <span class="subject">fix: handle edge case in agent handoff timeout</span></div>
+<div class="line"><span class="hash">c4d5e6f</span> <span class="subject">refactor: extract routing logic into separate module</span></div>
+<div class="line"><span class="hash">1b2c3d4</span> <span class="subject">test: add integration tests for routing fallback</span></div>
+<div class="line"><span class="hash">9f8e7d6</span> <span class="subject">chore: update agent SDK to v2.3.1</span></div>
+<div class="line"></div>
+<div class="line"><span class="prompt">&#x276F;</span> <span class="cmd">cargo test agent_routing</span></div>
+<div class="line"><span class="out">   Compiling fusion-agents v0.4.0</span></div>
+<div class="line"><span class="out">    Finished `test` profile in 3.42s</span></div>
+<div class="line"><span class="out">     Running unittests src/lib.rs</span></div>
+<div class="line"></div>
+<div class="line"><span class="out">running 4 tests</span></div>
+<div class="line"><span class="out">test agent_routing::test_priority_queue ....... </span><span class="ok">ok</span></div>
+<div class="line"><span class="out">test agent_routing::test_fallback_handler ..... </span><span class="ok">ok</span></div>
+<div class="line"><span class="out">test agent_routing::test_timeout_handoff ...... </span><span class="ok">ok</span></div>
+<div class="line"><span class="out">test agent_routing::test_multi_agent_dispatch . </span><span class="ok">ok</span></div>
+<div class="line"></div>
+<div class="line"><span class="out">test result: </span><span class="ok">ok</span><span class="out">. 4 passed; 0 failed; 0 ignored</span></div>
+<div class="line"></div>
+<div class="line"><span class="prompt">&#x276F;</span> </div>
+        </div>
+        <div class="status-bar">
+          <span class="k">Enter</span><span class="l"> select</span>
+          <span class="sep"> &#x2502; </span>
+          <span class="k">n</span><span class="l"> new</span>
+          <span class="sep"> &#x2502; </span>
+          <span class="k">a</span><span class="l"> archive</span>
+          <span class="sep"> &#x2502; </span>
+          <span class="k">s</span><span class="l"> status</span>
+          <span class="sep"> &#x2502; </span>
+          <span class="k">q</span><span class="l"> quit</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════ -->
+<!-- SCENE 3: Create dialog open                         -->
+<!-- ════════════════════════════════════════════════════ -->
+<div>
+  <div class="scene-label">Create dialog &mdash; <em>New worktree</em> overlay at bottom of sidebar</div>
+  <div class="terminal-window">
+    <div class="title-bar">
+      <div class="dot red"></div>
+      <div class="dot yellow"></div>
+      <div class="dot green"></div>
+      <div class="title">arbor &mdash; ~/Repos/Enablis/fusion-platform</div>
+    </div>
+    <div class="app">
+      <!-- Sidebar: focused with dialog -->
+      <div class="sidebar focused">
+        <span class="sidebar-title"> arbor </span>
+        <div class="sidebar-content">
+          <div class="group-header">IN PROGRESS</div>
+          <div class="wt">
+            <span class="wt-icon icon-dot">&middot;</span>
+            <span class="wt-name">main</span>
+          </div>
+          <div class="wt">
+            <span class="wt-icon icon-active">!</span>
+            <span class="wt-name">feat/agent-routing</span>
+          </div>
+          <div class="wt">
+            <span class="wt-icon icon-dot">&middot;</span>
+            <span class="wt-name">fix/auth-refresh</span>
+          </div>
+          <div class="group-spacer"></div>
+
+          <div class="group-header">IN REVIEW</div>
+          <div class="wt">
+            <span class="wt-icon icon-review">&#x25CB;</span>
+            <span class="wt-name">feat/sqs-batching</span>
+          </div>
+          <div class="group-spacer"></div>
+
+          <div class="group-header">QUEUED</div>
+          <div class="wt">
+            <span class="wt-icon icon-queued">&#x25B6;</span>
+            <span class="wt-name">chore/tf-upgrade</span>
+          </div>
+          <div class="group-spacer"></div>
+
+          <div class="group-header">DONE</div>
+          <div class="wt">
+            <span class="wt-icon icon-done">&#x2713;</span>
+            <span class="wt-name">fix/cors-headers</span>
+          </div>
+        </div>
+        <!-- Create dialog -->
+        <div class="dialog visible">
+          <div class="dialog-row title"> New worktree</div>
+          <div class="dialog-row"><span class="field-label"> Branch: </span><span class="field-value">feat/webhook-retry<span class="field-cursor">_</span></span></div>
+          <div class="dialog-row archived"> Tab: restore (2 archived)</div>
+          <div class="dialog-row hint"> Enter confirm &middot; Esc cancel</div>
+        </div>
+      </div>
+
+      <!-- Right pane -->
+      <div class="right-pane">
+        <div class="header-bar">
+          <span>~/.../fusion-platform-worktrees/feat/agent-routing</span>
+          <span class="branch">&#x2387; feat/agent-routing</span>
+        </div>
+        <div class="info-bar">
+          <span class="pr-open pr-number">#247</span>
+          <span class="pr-open">Open</span>
+          <span class="pr-sep">&middot;</span>
+          <span class="pr-url">github.com/enablis/fusion-platform/pull/247</span>
+        </div>
+        <div class="term dimmed">
+<div class="line"><span class="prompt">~/f-p-wt/feat/agent-routing</span></div>
+<div class="line"><span class="prompt">&#x276F;</span> <span class="cmd">cargo build</span></div>
+<div class="line"><span class="out">   Compiling fusion-agents v0.4.0</span></div>
+<div class="line"><span class="out">    Finished `dev` profile in 5.18s</span></div>
+<div class="line"></div>
+<div class="line"><span class="prompt">&#x276F;</span> </div>
+        </div>
+        <div class="status-bar">
+          <span class="k">Enter</span><span class="l"> select</span>
+          <span class="sep"> &#x2502; </span>
+          <span class="k">n</span><span class="l"> new</span>
+          <span class="sep"> &#x2502; </span>
+          <span class="k">a</span><span class="l"> archive</span>
+          <span class="sep"> &#x2502; </span>
+          <span class="k">s</span><span class="l"> status</span>
+          <span class="sep"> &#x2502; </span>
+          <span class="k">q</span><span class="l"> quit</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════ -->
+<!-- SCENE 4: Archive confirm + flash message            -->
+<!-- ════════════════════════════════════════════════════ -->
+<div>
+  <div class="scene-label">Archive confirm dialog &mdash; with <em>flash message</em> in status bar</div>
+  <div class="terminal-window">
+    <div class="title-bar">
+      <div class="dot red"></div>
+      <div class="dot yellow"></div>
+      <div class="dot green"></div>
+      <div class="title">arbor &mdash; ~/Repos/Enablis/fusion-platform</div>
+    </div>
+    <div class="app">
+      <!-- Sidebar: focused with archive dialog -->
+      <div class="sidebar focused">
+        <span class="sidebar-title"> arbor </span>
+        <div class="sidebar-content">
+          <div class="group-header">IN PROGRESS</div>
+          <div class="wt">
+            <span class="wt-icon icon-dot">&middot;</span>
+            <span class="wt-name">main</span>
+          </div>
+          <div class="wt">
+            <span class="wt-icon icon-active">!</span>
+            <span class="wt-name">feat/agent-routing</span>
+          </div>
+          <div class="wt selected">
+            <span class="wt-icon icon-dot">&middot;</span>
+            <span class="wt-name">fix/auth-refresh</span>
+          </div>
+          <div class="group-spacer"></div>
+
+          <div class="group-header">IN REVIEW</div>
+          <div class="wt">
+            <span class="wt-icon icon-review">&#x25CB;</span>
+            <span class="wt-name">feat/sqs-batching</span>
+          </div>
+          <div class="group-spacer"></div>
+
+          <div class="group-header">DONE</div>
+          <div class="wt">
+            <span class="wt-icon icon-done">&#x2713;</span>
+            <span class="wt-name">fix/cors-headers</span>
+          </div>
+          <div class="group-spacer"></div>
+
+          <div class="new-wt">[+] new worktree</div>
+        </div>
+        <!-- Archive dialog -->
+        <div class="dialog visible">
+          <div class="dialog-row" style="color:#febc2e;font-weight:700"> Archive worktree</div>
+          <div class="dialog-row"><span class="field-label"> Remove fix/auth-refresh? (y/n)</span></div>
+          <div class="dialog-row hint"> Branch kept &middot; restore with n</div>
+        </div>
+      </div>
+
+      <!-- Right pane -->
+      <div class="right-pane">
+        <div class="header-bar">
+          <span>~/.../fusion-platform-worktrees/fix/auth-refresh</span>
+          <span class="branch">&#x2387; fix/auth-refresh</span>
+        </div>
+        <div class="term dimmed">
+<div class="line"><span class="prompt">~/f-p-wt/fix/auth-refresh</span></div>
+<div class="line"><span class="prompt">&#x276F;</span> <span class="cmd">git status</span></div>
+<div class="line"><span class="out">On branch fix/auth-refresh</span></div>
+<div class="line"><span class="out">nothing to commit, working tree clean</span></div>
+<div class="line"></div>
+<div class="line"><span class="prompt">&#x276F;</span> </div>
+        </div>
+        <div class="status-bar">
+          <span class="flash"> Worktree created: feat/webhook-retry </span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

@@ -126,7 +126,7 @@ impl WorktreeManager {
                 path: wt_path,
                 is_main: false,
                 status: None,
-                workflow_status: WorkflowStatus::Queued,
+                workflow_status: WorkflowStatus::Backlog,
                 short_name: None,
                 ahead: 0,
                 behind: 0,

@@ -37,17 +37,17 @@ fn test_save_and_load_roundtrip() {
 }
 
 #[test]
-fn test_default_status_is_queued() {
+fn test_default_status_is_backlog() {
     let config = arbor::persistence::WorktreeConfig::default();
-    assert_eq!(config.status, arbor::persistence::WorkflowStatus::Queued);
+    assert_eq!(config.status, arbor::persistence::WorkflowStatus::Backlog);
 }
 
 #[test]
 fn test_workflow_status_cycle() {
     use arbor::persistence::WorkflowStatus;
-    assert_eq!(WorkflowStatus::Queued.next(), WorkflowStatus::InProgress);
-    assert_eq!(WorkflowStatus::InProgress.next(), WorkflowStatus::Done);
-    assert_eq!(WorkflowStatus::Done.next(), WorkflowStatus::Queued);
+    assert_eq!(WorkflowStatus::Backlog.next(), Some(WorkflowStatus::Queued));
+    assert_eq!(WorkflowStatus::Queued.next(), Some(WorkflowStatus::InProgress));
+    assert_eq!(WorkflowStatus::InProgress.next(), None); // signals archive
     // InReview cycles back to InProgress (manual override out of review)
-    assert_eq!(WorkflowStatus::InReview.next(), WorkflowStatus::InProgress);
+    assert_eq!(WorkflowStatus::InReview.next(), Some(WorkflowStatus::InProgress));
 }

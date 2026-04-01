@@ -226,6 +226,24 @@ impl App {
                 self.flash_message = None;
             }
 
+            // Spinner auto-promote: active PTY output temporarily pulls InReview to InProgress
+            let now_ms = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_millis() as u64;
+            let mut spinner_promoted: Vec<usize> = Vec::new();
+            for (i, wt) in self.sidebar_state.worktrees.iter_mut().enumerate() {
+                if wt.workflow_status == WorkflowStatus::InReview {
+                    if let Some(pty) = self.pty_sessions.get(&wt.path) {
+                        let last = pty.last_output_millis();
+                        if last > 0 && now_ms.saturating_sub(last) < 500 {
+                            wt.workflow_status = WorkflowStatus::InProgress;
+                            spinner_promoted.push(i);
+                        }
+                    }
+                }
+            }
+
             terminal.draw(|frame| {
                 // Top-level: main area + status bar
                 let outer = Layout::default()
@@ -278,10 +296,10 @@ impl App {
                     ];
 
                     let status_label = match wt.workflow_status {
+                        WorkflowStatus::Backlog => "BACKLOG",
                         WorkflowStatus::Queued => "QUEUED",
                         WorkflowStatus::InProgress => "IN PROGRESS",
                         WorkflowStatus::InReview => "IN REVIEW",
-                        WorkflowStatus::Done => "DONE",
                     };
                     row1_spans.push(Span::styled(
                         format!(" {} ", status_label),
@@ -364,6 +382,11 @@ impl App {
                 let status_line = self.build_status_line(outer[1].width);
                 frame.render_widget(status_line, outer[1]);
             })?;
+
+            // Restore InReview for worktrees that were temporarily promoted for display
+            for i in spinner_promoted {
+                self.sidebar_state.worktrees[i].workflow_status = WorkflowStatus::InReview;
+            }
 
             self.spinner_frame = self.spinner_frame.wrapping_add(1);
 
@@ -533,6 +556,19 @@ impl App {
             }
             Action::SidebarSelect => {
                 if self.sidebar_state.selected < self.sidebar_state.worktrees.len() {
+                    // Auto-promote Backlog/Queued to InProgress on first select
+                    let wt = &self.sidebar_state.worktrees[self.sidebar_state.selected];
+                    if !wt.is_main && matches!(wt.workflow_status, WorkflowStatus::Backlog | WorkflowStatus::Queued) {
+                        let repo_root = wt.repo_root.clone();
+                        let branch = wt.branch.clone();
+                        let wt = &mut self.sidebar_state.worktrees[self.sidebar_state.selected];
+                        wt.workflow_status = WorkflowStatus::InProgress;
+                        if let Some(config) = self.configs.get_mut(&repo_root) {
+                            let entry = config.worktrees.entry(branch).or_default();
+                            entry.status = WorkflowStatus::InProgress;
+                            let _ = config.save(&repo_root);
+                        }
+                    }
                     let size = crossterm::terminal::size()?;
                     self.ensure_pty_for_selected(size.1, size.0)?;
                     self.focus = Focus::Terminal;
@@ -599,24 +635,32 @@ impl App {
             Action::StatusCycle => {
                 let idx = self.sidebar_state.selected;
                 if idx < self.sidebar_state.worktrees.len() {
-                    let wt = &mut self.sidebar_state.worktrees[idx];
+                    let wt = &self.sidebar_state.worktrees[idx];
                     if !wt.is_main {
-                        wt.workflow_status = wt.workflow_status.next();
-                        let repo_root = wt.repo_root.clone();
-                        let branch = wt.branch.clone();
-                        let status = wt.workflow_status;
-                        if let Some(config) = self.configs.get_mut(&repo_root) {
-                            let entry = config.worktrees.entry(branch).or_default();
-                            entry.status = status;
-                            let _ = config.save(&repo_root);
+                        match wt.workflow_status.next() {
+                            Some(next_status) => {
+                                let repo_root = wt.repo_root.clone();
+                                let branch = wt.branch.clone();
+                                let wt = &mut self.sidebar_state.worktrees[idx];
+                                wt.workflow_status = next_status;
+                                if let Some(config) = self.configs.get_mut(&repo_root) {
+                                    let entry = config.worktrees.entry(branch).or_default();
+                                    entry.status = next_status;
+                                    let _ = config.save(&repo_root);
+                                }
+                                let label = match next_status {
+                                    WorkflowStatus::Backlog => "Backlog",
+                                    WorkflowStatus::Queued => "Queued",
+                                    WorkflowStatus::InProgress => "In Progress",
+                                    WorkflowStatus::InReview => "In Review",
+                                };
+                                self.flash(format!("Status: {}", label));
+                            }
+                            None => {
+                                // Cycling past InProgress → archive
+                                self.handle_action(Action::SidebarArchive)?;
+                            }
                         }
-                        let label = match status {
-                            WorkflowStatus::Queued => "Queued",
-                            WorkflowStatus::InProgress => "In Progress",
-                            WorkflowStatus::InReview => "In Review",
-                            WorkflowStatus::Done => "Done",
-                        };
-                        self.flash(format!("Status: {}", label));
                     }
                 }
             }
@@ -945,7 +989,7 @@ impl App {
         self.sidebar_width = self.calculate_panel_width();
     }
 
-    /// Override workflow status based on PR state (open -> InReview, merged -> Done).
+    /// Override workflow status based on PR state (open/draft -> InReview).
     fn apply_pr_auto_status(
         github_caches: &HashMap<PathBuf, SharedGitHubCache>,
         wt: &mut WorktreeInfo,
@@ -954,8 +998,9 @@ impl App {
             if let Some(cache) = github_caches.get(&wt.repo_root) {
                 if let Some(pr) = cache.get(&wt.branch) {
                     match pr.state {
-                        crate::github::PrState::Open => wt.workflow_status = WorkflowStatus::InReview,
-                        crate::github::PrState::Merged => wt.workflow_status = WorkflowStatus::Done,
+                        crate::github::PrState::Open | crate::github::PrState::Draft => {
+                            wt.workflow_status = WorkflowStatus::InReview;
+                        }
                         _ => {}
                     }
                 }

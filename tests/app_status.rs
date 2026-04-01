@@ -35,16 +35,13 @@ fn test_status_cycle_on_non_main() {
     app.sidebar_state.selected = non_main_idx;
     app.focus = Focus::Sidebar;
 
+    assert_eq!(app.sidebar_state.worktrees[non_main_idx].workflow_status, WorkflowStatus::Backlog);
+
+    app.handle_action(arbor::keys::Action::StatusCycle).unwrap();
     assert_eq!(app.sidebar_state.worktrees[non_main_idx].workflow_status, WorkflowStatus::Queued);
 
     app.handle_action(arbor::keys::Action::StatusCycle).unwrap();
     assert_eq!(app.sidebar_state.worktrees[non_main_idx].workflow_status, WorkflowStatus::InProgress);
-
-    app.handle_action(arbor::keys::Action::StatusCycle).unwrap();
-    assert_eq!(app.sidebar_state.worktrees[non_main_idx].workflow_status, WorkflowStatus::Done);
-
-    app.handle_action(arbor::keys::Action::StatusCycle).unwrap();
-    assert_eq!(app.sidebar_state.worktrees[non_main_idx].workflow_status, WorkflowStatus::Queued);
 }
 
 #[test]
@@ -63,16 +60,16 @@ fn test_status_cycle_persists_to_file() {
     app.handle_action(arbor::keys::Action::StatusCycle).unwrap();
 
     let config = arbor::persistence::ArborConfig::load(dir.path());
-    assert_eq!(config.worktrees["feature-b"].status, WorkflowStatus::InProgress);
+    assert_eq!(config.worktrees["feature-b"].status, WorkflowStatus::Queued);
 }
 
 #[test]
 fn test_config_override_main_always_in_progress() {
     let dir = common::init_test_repo();
-    // Write a config that tries to set main to Done
+    // Write a config that tries to set main to Backlog
     let mut config = arbor::persistence::ArborConfig::default();
     config.worktrees.insert("main".to_string(), arbor::persistence::WorktreeConfig {
-        status: WorkflowStatus::Done,
+        status: WorkflowStatus::Backlog,
         short_name: None,
     });
     config.save(dir.path()).unwrap();

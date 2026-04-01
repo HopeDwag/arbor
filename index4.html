@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Arbor — Concept: Floating Picker</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+
+  :root {
+    --base:      #1e1e2e;
+    --mantle:    #181825;
+    --crust:     #11111b;
+    --surface0:  #313244;
+    --surface1:  #45475a;
+    --surface2:  #585b70;
+    --overlay0:  #6c7086;
+    --overlay1:  #7f849c;
+    --subtext0:  #a6adc8;
+    --text:      #cdd6f4;
+    --red:       #f38ba8;
+    --green:     #a6e3a1;
+    --yellow:    #f9e2af;
+    --blue:      #89b4fa;
+    --mauve:     #cba6f7;
+    --teal:      #94e2d5;
+    --peach:     #fab387;
+
+    --mono: 'JetBrains Mono', 'Menlo', 'Consolas', monospace;
+    --cell-h: 1.4em;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--crust);
+    font-family: var(--mono);
+    font-size: 13px;
+    font-variant-numeric: tabular-nums lining-nums;
+    color: var(--text);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+    padding: 32px 24px;
+    gap: 40px;
+    user-select: none;
+  }
+
+  .label {
+    text-align: center;
+  }
+  .label h2 { font-size: 16px; color: var(--text); margin-bottom: 4px; }
+  .label p { color: var(--overlay0); font-size: 12px; line-height: 1.6; max-width: 640px; }
+  .label em { color: var(--teal); font-style: normal; }
+
+  .window {
+    background: var(--base);
+    border-radius: 10px;
+    overflow: hidden;
+    width: 1060px;
+    max-width: 100%;
+    box-shadow: 0 24px 80px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.04);
+    position: relative;
+  }
+
+  .chrome {
+    background: var(--mantle);
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .dot { width: 12px; height: 12px; border-radius: 50%; }
+  .dot-r { background: #ff5f57; }
+  .dot-y { background: #febc2e; }
+  .dot-g { background: #28c840; }
+  .chrome-t { flex:1; text-align:center; color:var(--overlay0); font-size:12px; }
+
+  /* Minimal header */
+  .mini-hdr {
+    display: flex;
+    align-items: center;
+    padding: 0 1ch;
+    height: var(--cell-h);
+    line-height: var(--cell-h);
+    font-size: 12px;
+    background: var(--surface0);
+    gap: 1ch;
+  }
+  .mini-hdr .branch { color: var(--teal); font-weight: 700; }
+  .mini-hdr .pr { color: var(--green); font-weight: 700; }
+  .mini-hdr .sep { color: var(--surface2); }
+  .mini-hdr .sync { color: var(--teal); }
+  .mini-hdr .syncb { color: var(--yellow); }
+  .mini-hdr .pill {
+    font-size: 10px; font-weight: 700;
+    padding: 1px 6px; border-radius: 3px;
+    letter-spacing: 0.3px;
+  }
+  .mini-hdr .hint { color: var(--surface2); margin-left: auto; }
+
+  /* Terminal */
+  .term {
+    padding: 0.4em 1ch;
+    overflow: hidden;
+    line-height: 1.4;
+  }
+  .term .l { white-space: pre; height: var(--cell-h); }
+  .term .p { color: var(--green); font-weight: 700; }
+  .term .c { color: var(--text); }
+  .term .o { color: var(--subtext0); }
+  .term .k { color: var(--green); }
+  .term .h { color: var(--yellow); }
+  .term .j { color: var(--text); }
+  .term .w { color: var(--yellow); }
+  .term .e { color: var(--red); }
+
+  .bc {
+    display: inline-block; width: 1ch;
+    background: var(--text); color: var(--base);
+    animation: bk 1s step-end infinite;
+  }
+  @keyframes bk { 0%,49%{opacity:1} 50%,100%{opacity:0} }
+
+  @keyframes sp {
+    0%{content:"\2801"}10%{content:"\2809"}20%{content:"\2819"}30%{content:"\2838"}
+    40%{content:"\283C"}50%{content:"\2834"}60%{content:"\2826"}70%{content:"\2807"}
+    80%{content:"\280F"}90%{content:"\280B"}
+  }
+  .spn::before { content:"\280B"; animation:sp 0.8s steps(1) infinite; }
+
+  .sbar {
+    background: var(--surface0);
+    padding: 0 1ch;
+    line-height: var(--cell-h);
+    height: var(--cell-h);
+    white-space: nowrap;
+    font-size: 12px;
+  }
+  .sbar .k { color: var(--teal); font-weight: 700; }
+  .sbar .v { color: var(--text); }
+  .sbar .s { color: var(--overlay0); }
+
+  /* ── Floating picker overlay ── */
+  .overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(17,17,27,0.7);
+    display: flex;
+    justify-content: center;
+    padding-top: 60px;
+    z-index: 20;
+  }
+
+  .picker {
+    width: 50ch;
+    background: var(--surface0);
+    border: 1px solid var(--surface1);
+    border-radius: 8px;
+    box-shadow: 0 16px 48px rgba(0,0,0,0.4);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    max-height: 360px;
+  }
+
+  .picker-search {
+    display: flex;
+    align-items: center;
+    gap: 1ch;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--surface1);
+    font-size: 13px;
+  }
+  .picker-search .icon { color: var(--teal); }
+  .picker-search .input { color: var(--text); flex: 1; }
+  .picker-search .input-cursor {
+    display: inline-block; width: 1ch; height: 1em;
+    background: var(--teal); vertical-align: text-bottom;
+    animation: bk 1s step-end infinite;
+  }
+  .picker-search .count { color: var(--surface2); font-size: 11px; }
+
+  .picker-list {
+    flex: 1;
+    overflow: hidden;
+  }
+
+  .pick-row {
+    display: flex;
+    align-items: center;
+    padding: 4px 12px;
+    gap: 1ch;
+    line-height: 1.6;
+    cursor: pointer;
+  }
+  .pick-row:hover { background: rgba(205,214,244,0.03); }
+  .pick-row.sel {
+    background: var(--surface1);
+  }
+  .pick-row.sel .pick-name { color: var(--teal); font-weight: 700; }
+
+  .pick-icon { width: 1.5ch; text-align: center; flex-shrink: 0; }
+  .pick-name { color: var(--text); flex: 1; }
+  .pick-meta { color: var(--surface2); font-size: 11px; display: flex; gap: 1ch; align-items: center; }
+  .pick-meta .pr { font-weight: 700; }
+  .pick-meta .pill {
+    font-size: 9px; font-weight: 700;
+    padding: 1px 5px; border-radius: 3px;
+    letter-spacing: 0.3px;
+  }
+
+  .picker-footer {
+    padding: 6px 12px;
+    border-top: 1px solid var(--surface1);
+    font-size: 11px;
+    color: var(--surface2);
+    display: flex;
+    gap: 2ch;
+  }
+  .picker-footer .k { color: var(--teal); }
+
+  /* ── Side-by-side scenes ── */
+  .scenes {
+    display: flex;
+    gap: 24px;
+    width: 100%;
+    max-width: 1060px;
+  }
+  .scene {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .scene .label p { font-size: 11px; }
+</style>
+</head>
+<body>
+
+<!-- ═══ Scene 1: Full terminal, no picker ═══ -->
+<div class="label">
+  <h2>Concept B: Floating Picker</h2>
+  <p>No permanent sidebar. The terminal gets 100% of the screen. Summon a <em>fuzzy-find picker</em> with <em>Ctrl+P</em> to switch worktrees. Inspired by VS Code's command palette and Helix's buffer picker.</p>
+</div>
+
+<div class="scenes">
+  <div class="scene">
+    <div class="label"><p>Normal state &mdash; full-screen terminal</p></div>
+    <div class="window">
+      <div class="chrome">
+        <div class="dot dot-r"></div>
+        <div class="dot dot-y"></div>
+        <div class="dot dot-g"></div>
+        <div class="chrome-t">arbor</div>
+      </div>
+      <div class="mini-hdr">
+        <span class="branch">&#x2387; feat/agent-routing</span>
+        <span class="sep">&middot;</span>
+        <span class="pill" style="background:var(--teal);color:var(--crust)">IN PROGRESS</span>
+        <span class="sep">&middot;</span>
+        <span class="pr">#247</span>
+        <span class="sync">&#x2191;3</span>
+        <span class="syncb">&#x2193;1</span>
+        <span class="hint">Ctrl+P switch</span>
+      </div>
+      <div class="term" style="height:320px">
+<div class="l"><span class="p">&#x276F;</span> <span class="c">cargo test agent_routing</span></div>
+<div class="l"><span class="o">   Compiling fusion-agents v0.4.0</span></div>
+<div class="l"><span class="o">    Finished `test` profile in 3.42s</span></div>
+<div class="l"><span class="o">     Running unittests src/lib.rs</span></div>
+<div class="l">&nbsp;</div>
+<div class="l"><span class="o">running 4 tests</span></div>
+<div class="l"><span class="o">test agent_routing::test_priority_queue ....... </span><span class="k">ok</span></div>
+<div class="l"><span class="o">test agent_routing::test_fallback_handler ..... </span><span class="k">ok</span></div>
+<div class="l"><span class="o">test agent_routing::test_timeout_handoff ...... </span><span class="k">ok</span></div>
+<div class="l"><span class="o">test agent_routing::test_multi_agent_dispatch . </span><span class="k">ok</span></div>
+<div class="l">&nbsp;</div>
+<div class="l"><span class="o">test result: </span><span class="k">ok</span><span class="o">. 4 passed; 0 failed; 0 ignored</span></div>
+<div class="l">&nbsp;</div>
+<div class="l"><span class="p">&#x276F;</span> <span class="bc"> </span></div>
+      </div>
+      <div class="sbar">
+        <span class="k">Ctrl+P</span><span class="v"> switch</span>
+        <span class="s"> &#x2502; </span>
+        <span class="k">Ctrl+N</span><span class="v"> new</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="scene">
+    <div class="label"><p>Picker open &mdash; fuzzy search worktrees</p></div>
+    <div class="window">
+      <div class="chrome">
+        <div class="dot dot-r"></div>
+        <div class="dot dot-y"></div>
+        <div class="dot dot-g"></div>
+        <div class="chrome-t">arbor</div>
+      </div>
+      <div class="mini-hdr">
+        <span class="branch">&#x2387; feat/agent-routing</span>
+        <span class="sep">&middot;</span>
+        <span class="pill" style="background:var(--teal);color:var(--crust)">IN PROGRESS</span>
+        <span class="sep">&middot;</span>
+        <span class="pr" style="color:var(--green)">#247</span>
+        <span class="sync">&#x2191;3</span>
+        <span class="syncb">&#x2193;1</span>
+        <span class="hint">Ctrl+P switch</span>
+      </div>
+      <div class="term" style="height:320px;opacity:0.3">
+<div class="l"><span class="p">&#x276F;</span> <span class="c">cargo test agent_routing</span></div>
+<div class="l"><span class="o">   Compiling fusion-agents v0.4.0</span></div>
+<div class="l"><span class="o">    Finished `test` profile in 3.42s</span></div>
+<div class="l"><span class="o">     Running unittests src/lib.rs</span></div>
+<div class="l">&nbsp;</div>
+<div class="l"><span class="o">running 4 tests</span></div>
+<div class="l"><span class="o">test agent_routing::test_priority_queue ....... </span><span class="k">ok</span></div>
+<div class="l"><span class="o">test agent_routing::test_fallback_handler ..... </span><span class="k">ok</span></div>
+<div class="l"><span class="o">test agent_routing::test_timeout_handoff ...... </span><span class="k">ok</span></div>
+<div class="l"><span class="o">test agent_routing::test_multi_agent_dispatch . </span><span class="k">ok</span></div>
+<div class="l">&nbsp;</div>
+<div class="l"><span class="o">test result: </span><span class="k">ok</span><span class="o">. 4 passed; 0 failed; 0 ignored</span></div>
+<div class="l">&nbsp;</div>
+<div class="l"><span class="p">&#x276F;</span> </div>
+      </div>
+      <div class="sbar">
+        <span class="k">&#x2191;&#x2193;</span><span class="v"> navigate</span>
+        <span class="s"> &#x2502; </span>
+        <span class="k">Enter</span><span class="v"> select</span>
+        <span class="s"> &#x2502; </span>
+        <span class="k">Esc</span><span class="v"> cancel</span>
+      </div>
+
+      <!-- Picker overlay -->
+      <div class="overlay">
+        <div class="picker">
+          <div class="picker-search">
+            <span class="icon">&#x2315;</span>
+            <span class="input">sqs<span class="input-cursor"></span></span>
+            <span class="count">1/8</span>
+          </div>
+          <div class="picker-list">
+            <div class="pick-row sel">
+              <span class="pick-icon" style="color:var(--teal)">&#x25CB;</span>
+              <span class="pick-name">feat/sqs-batching</span>
+              <span class="pick-meta">
+                <span class="pill" style="background:var(--teal);color:var(--crust)">REVIEW</span>
+                <span class="pr" style="color:var(--green)">#238</span>
+                <span style="color:var(--yellow)">&#x2193;2</span>
+              </span>
+            </div>
+          </div>
+          <div class="picker-footer">
+            <span><span class="k">Enter</span> open</span>
+            <span><span class="k">Ctrl+S</span> cycle status</span>
+            <span><span class="k">Ctrl+A</span> archive</span>
+            <span><span class="k">Esc</span> close</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

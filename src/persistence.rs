@@ -6,20 +6,21 @@ use std::path::Path;
 #[serde(rename_all = "snake_case")]
 pub enum WorkflowStatus {
     #[default]
+    Backlog,
     Queued,
     InProgress,
     InReview,
-    Done,
 }
 
 impl WorkflowStatus {
-    /// Cycle through manual statuses (skips InReview — that's auto from PR state)
-    pub fn next(self) -> Self {
+    /// Cycle through manual statuses. Returns None when cycling past InProgress
+    /// (caller should trigger archive). Skips InReview — that's auto from PR state.
+    pub fn next(self) -> Option<Self> {
         match self {
-            Self::Queued => Self::InProgress,
-            Self::InProgress => Self::Done,
-            Self::InReview => Self::InProgress, // manual override out of review
-            Self::Done => Self::Queued,
+            Self::Backlog => Some(Self::Queued),
+            Self::Queued => Some(Self::InProgress),
+            Self::InProgress => None, // signals "archive this"
+            Self::InReview => Some(Self::InProgress), // manual override out of review
         }
     }
 }
@@ -34,7 +35,7 @@ pub struct WorktreeConfig {
 impl Default for WorktreeConfig {
     fn default() -> Self {
         Self {
-            status: WorkflowStatus::Queued,
+            status: WorkflowStatus::Backlog,
             short_name: None,
         }
     }

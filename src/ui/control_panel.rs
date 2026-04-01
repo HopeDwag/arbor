@@ -78,7 +78,7 @@ pub fn render_control_panel(
         (WorkflowStatus::InProgress, "\u{1F33F} IN PROGRESS"),
         (WorkflowStatus::InReview, "\u{1F343} IN REVIEW"),
         (WorkflowStatus::Queued, "\u{1F331} QUEUED"),
-        (WorkflowStatus::Done, "\u{1F342} DONE"),
+        (WorkflowStatus::Backlog, "\u{1F342} BACKLOG"),
     ];
 
     // Clear layout tracking
@@ -143,8 +143,8 @@ pub fn render_control_panel(
                 }
             } else {
                 match wt.workflow_status {
-                    WorkflowStatus::Queued => Span::styled("\u{25B6} ", Style::default().fg(THEME.grey0)),
-                    WorkflowStatus::Done => Span::styled("\u{2713} ", Style::default().fg(THEME.green)),
+                    WorkflowStatus::Backlog => Span::styled("\u{25B6} ", Style::default().fg(THEME.bg4)),
+                    WorkflowStatus::Queued => Span::styled("! ", Style::default().fg(THEME.yellow)),
                     WorkflowStatus::InReview => Span::styled("\u{e728} ", Style::default().fg(THEME.aqua)),
                     WorkflowStatus::InProgress => Span::styled("\u{00B7} ", Style::default().fg(THEME.grey0)),
                 }
@@ -172,7 +172,7 @@ pub fn render_control_panel(
             } else {
                 match wt.workflow_status {
                     WorkflowStatus::InReview => THEME.blue,
-                    WorkflowStatus::Done => THEME.aqua,
+                    WorkflowStatus::Queued => THEME.yellow,
                     _ => THEME.bg3,
                 }
             };
