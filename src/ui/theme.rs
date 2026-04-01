@@ -1,4 +1,5 @@
 use ratatui::style::Color;
+use std::sync::LazyLock;
 
 pub struct Theme {
     pub bg: Color,
@@ -21,7 +22,9 @@ pub struct Theme {
 }
 
 impl Theme {
-    pub const fn everforest() -> Self {
+    /// Everforest Dark Hard — true color (24-bit RGB).
+    /// Requires COLORTERM=truecolor or 24bit.
+    const fn everforest_rgb() -> Self {
         Self {
             bg:     Color::Rgb(0x27, 0x2e, 0x33),
             bg0:    Color::Rgb(0x23, 0x2a, 0x2e),
@@ -42,6 +45,42 @@ impl Theme {
             purple: Color::Rgb(0xd6, 0x99, 0xb6),
         }
     }
+
+    /// Everforest Dark Hard — 256-color approximation.
+    /// Closest xterm-256 indices for each Everforest color.
+    const fn everforest_256() -> Self {
+        Self {
+            bg:     Color::Indexed(236),  // #303030
+            bg0:    Color::Indexed(235),  // #262626
+            bg1:    Color::Indexed(237),  // #3a3a3a
+            bg2:    Color::Indexed(238),  // #444444
+            bg3:    Color::Indexed(239),  // #4e4e4e
+            bg4:    Color::Indexed(240),  // #585858
+            fg:     Color::Indexed(187),  // #d7d7af
+            grey0:  Color::Indexed(102),  // #878787
+            grey1:  Color::Indexed(108),  // #87af87
+            grey2:  Color::Indexed(144),  // #afaf87
+            red:    Color::Indexed(174),  // #d78787
+            orange: Color::Indexed(180),  // #d7af87
+            yellow: Color::Indexed(186),  // #d7d787
+            green:  Color::Indexed(142),  // #afaf00 -> 150 #afd787
+            aqua:   Color::Indexed(108),  // #87af87
+            blue:   Color::Indexed(109),  // #87afaf
+            purple: Color::Indexed(175),  // #d787af
+        }
+    }
 }
 
-pub static THEME: Theme = Theme::everforest();
+fn supports_truecolor() -> bool {
+    std::env::var("COLORTERM")
+        .map(|v| v == "truecolor" || v == "24bit")
+        .unwrap_or(false)
+}
+
+pub static THEME: LazyLock<Theme> = LazyLock::new(|| {
+    if supports_truecolor() {
+        Theme::everforest_rgb()
+    } else {
+        Theme::everforest_256()
+    }
+});
