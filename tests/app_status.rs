@@ -34,6 +34,7 @@ fn test_config_override_main_always_in_progress() {
     config.worktrees.insert("main".to_string(), arbor::persistence::WorktreeConfig {
         status: WorkflowStatus::Backlog,
         short_name: None,
+        parked: false,
     });
     config.save(dir.path()).unwrap();
 

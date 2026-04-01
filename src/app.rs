@@ -167,6 +167,7 @@ impl App {
                     if let Some(wt_config) = cfg.worktrees.get(&wt.branch) {
                         wt.workflow_status = wt_config.status;
                         wt.short_name = wt_config.short_name.clone();
+                        wt.parked = wt_config.parked;
                     }
                 }
                 Self::apply_pr_auto_status(&self.github_caches, wt);
@@ -237,6 +238,12 @@ impl App {
                 .collect();
             for wt in &mut self.sidebar_state.worktrees {
                 if wt.is_main { continue; }
+
+                // Parked → always Backlog
+                if wt.parked {
+                    wt.workflow_status = WorkflowStatus::Backlog;
+                    continue;
+                }
 
                 // PR overrides first
                 let has_open_pr = wt.pr.as_ref().is_some_and(|(_, state)| {
@@ -533,6 +540,9 @@ impl App {
                 spans.push(Span::styled("a", key_style));
                 spans.push(Span::styled(" archive", label_style));
                 spans.push(sep.clone());
+                spans.push(Span::styled("s", key_style));
+                spans.push(Span::styled(" park", label_style));
+                spans.push(sep.clone());
                 spans.push(Span::styled("q", key_style));
                 spans.push(Span::styled(" quit", label_style));
                 spans.push(sep.clone());
@@ -639,6 +649,29 @@ impl App {
                             name.clone()
                         };
                         self.dialog = Dialog::ArchiveConfirm(idx, name, display_name);
+                    }
+                }
+            }
+            Action::ParkToggle => {
+                let idx = self.sidebar_state.selected;
+                if idx < self.sidebar_state.worktrees.len() {
+                    let wt = &self.sidebar_state.worktrees[idx];
+                    if !wt.is_main {
+                        let new_parked = !wt.parked;
+                        let repo_root = wt.repo_root.clone();
+                        let branch = wt.branch.clone();
+                        let wt = &mut self.sidebar_state.worktrees[idx];
+                        wt.parked = new_parked;
+                        if let Some(config) = self.configs.get_mut(&repo_root) {
+                            let entry = config.worktrees.entry(branch).or_default();
+                            entry.parked = new_parked;
+                            let _ = config.save(&repo_root);
+                        }
+                        if new_parked {
+                            self.flash("Parked (backlog)");
+                        } else {
+                            self.flash("Unparked");
+                        }
                     }
                 }
             }
@@ -930,6 +963,7 @@ impl App {
                 if let Some(wt_config) = config.worktrees.get(&wt.branch) {
                     wt.workflow_status = wt_config.status;
                     wt.short_name = wt_config.short_name.clone();
+                    wt.parked = wt_config.parked;
                 }
             }
             Self::apply_pr_auto_status(&self.github_caches, wt);

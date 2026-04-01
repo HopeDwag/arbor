@@ -30,6 +30,8 @@ pub struct WorktreeConfig {
     pub status: WorkflowStatus,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub short_name: Option<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub parked: bool,
 }
 
 impl Default for WorktreeConfig {
@@ -37,6 +39,7 @@ impl Default for WorktreeConfig {
         Self {
             status: WorkflowStatus::Backlog,
             short_name: None,
+            parked: false,
         }
     }
 }

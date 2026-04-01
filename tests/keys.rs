@@ -6,9 +6,9 @@ fn make_key(code: KeyCode) -> KeyEvent {
 }
 
 #[test]
-fn test_s_key_is_noop() {
+fn test_s_key_triggers_park_toggle() {
     let action = handle_key(make_key(KeyCode::Char('s')), &Focus::Sidebar);
-    assert!(matches!(action, Action::None));
+    assert!(matches!(action, Action::ParkToggle));
 }
 
 #[test]

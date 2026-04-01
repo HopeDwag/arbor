@@ -24,6 +24,7 @@ pub struct WorktreeInfo {
     pub commit_message: Option<String>,
     pub is_dirty: bool,
     pub pr: Option<(u32, crate::github::PrState)>,
+    pub parked: bool,
 }
 
 pub struct WorktreeManager {
@@ -104,6 +105,7 @@ impl WorktreeManager {
             commit_message: commit_summary(&self.repo),
             is_dirty: is_repo_dirty(&self.repo),
             pr: None,
+            parked: false,
         });
 
         // Additional worktrees
@@ -136,6 +138,7 @@ impl WorktreeManager {
                 commit_message: commit_summary(&wt_repo),
                 is_dirty: is_repo_dirty(&wt_repo),
                 pr: None,
+                parked: false,
             });
         }
 

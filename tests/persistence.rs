@@ -25,6 +25,7 @@ fn test_save_and_load_roundtrip() {
         arbor::persistence::WorktreeConfig {
             status: arbor::persistence::WorkflowStatus::InProgress,
             short_name: Some("auth".to_string()),
+            parked: false,
         },
     );
     config.save(dir.path()).unwrap();
