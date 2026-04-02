@@ -76,10 +76,10 @@ pub fn render_control_panel(
 
     let groups: &[(WorkflowStatus, &str)] = &[
         (WorkflowStatus::Root, "ROOT"),
-        (WorkflowStatus::InProgress, "\u{1F33F} IN PROGRESS"),
-        (WorkflowStatus::InReview, "\u{1F343} IN REVIEW"),
+        (WorkflowStatus::InProgress, "\u{1F333} IN PROGRESS"),
+        (WorkflowStatus::InReview, "\u{1FAB5} IN REVIEW"),
         (WorkflowStatus::Queued, "\u{1F331} QUEUED"),
-        (WorkflowStatus::Backlog, "\u{1F342} BACKLOG"),
+        (WorkflowStatus::Backlog, "\u{1FAD8} BACKLOG"),
     ];
 
     // Clear layout tracking
