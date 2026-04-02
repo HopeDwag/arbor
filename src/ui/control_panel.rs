@@ -86,7 +86,7 @@ pub fn render_control_panel(
     state.group_regions.clear();
 
     let mut items: Vec<ListItem> = Vec::new();
-    let mut flat_to_visual: Vec<usize> = Vec::new();
+    let mut flat_to_visual: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
     // visual_row tracks the row offset within the inner area (0-based)
     let mut visual_row: usize = 0;
 
@@ -244,7 +244,7 @@ pub fn render_control_panel(
 
             let line2 = Line::from(line2_spans);
 
-            flat_to_visual.push(items.len());
+            flat_to_visual.insert(*flat_idx, items.len());
             items.push(ListItem::new(vec![line1, line2]));
             // Track both rows -> flat_idx mapping
             let abs_row1 = (list_area.y + visual_row as u16) as usize;
@@ -271,7 +271,7 @@ pub fn render_control_panel(
     }
 
     let mut list_state = ListState::default();
-    if let Some(&visual_idx) = flat_to_visual.get(state.selected) {
+    if let Some(&visual_idx) = flat_to_visual.get(&state.selected) {
         list_state.select(Some(visual_idx));
     }
 
