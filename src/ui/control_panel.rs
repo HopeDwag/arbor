@@ -161,15 +161,15 @@ pub fn render_control_panel(
             let name_style = if is_selected && focused {
                 Style::default().fg(THEME.aqua).add_modifier(Modifier::BOLD)
             } else if is_selected {
-                Style::default().fg(THEME.grey0).add_modifier(Modifier::BOLD)
+                Style::default().fg(THEME.grey2).add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(THEME.fg)
             };
 
             // Tree gutter characters
-            let trunk_color = if is_selected && focused { THEME.green } else { THEME.bg2 };
+            let trunk_color = if is_selected { THEME.green } else { THEME.bg2 };
             let fork = if is_last { "\u{2514}\u{2500}" } else { "\u{251C}\u{2500}" };
-            let leaf_color = if is_selected && focused {
+            let leaf_color = if is_selected {
                 THEME.green
             } else {
                 match wt.workflow_status {
@@ -280,7 +280,7 @@ pub fn render_control_panel(
     let highlight = if focused {
         Style::default().bg(THEME.bg3)
     } else {
-        Style::default()
+        Style::default().bg(THEME.bg2)
     };
     let list = List::new(items).highlight_style(highlight);
 
