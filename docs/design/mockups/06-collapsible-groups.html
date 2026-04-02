@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Arbor — Concept C v2: Collapsible Groups + Detail Panel</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+
+  :root {
+    --base:      #1e1e2e;
+    --mantle:    #181825;
+    --crust:     #11111b;
+    --surface0:  #313244;
+    --surface1:  #45475a;
+    --surface2:  #585b70;
+    --overlay0:  #6c7086;
+    --overlay1:  #7f849c;
+    --subtext0:  #a6adc8;
+    --subtext1:  #bac2de;
+    --text:      #cdd6f4;
+    --red:       #f38ba8;
+    --green:     #a6e3a1;
+    --yellow:    #f9e2af;
+    --blue:      #89b4fa;
+    --mauve:     #cba6f7;
+    --teal:      #94e2d5;
+    --peach:     #fab387;
+    --flamingo:  #f2cdcd;
+    --lavender:  #b4befe;
+
+    --mono: 'JetBrains Mono', 'Menlo', 'Consolas', monospace;
+    --cell-h: 1.4em;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--crust);
+    font-family: var(--mono);
+    font-size: 13px;
+    font-variant-numeric: tabular-nums lining-nums;
+    color: var(--text);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+    padding: 32px 24px;
+    gap: 16px;
+    user-select: none;
+  }
+
+  .label { text-align: center; margin-bottom: 8px; }
+  .label h2 { font-size: 16px; color: var(--text); margin-bottom: 4px; }
+  .label p { color: var(--overlay0); font-size: 12px; line-height: 1.6; max-width: 680px; }
+  .label em { color: var(--teal); font-style: normal; }
+
+  .window {
+    background: var(--base);
+    border-radius: 10px;
+    overflow: hidden;
+    width: 1180px;
+    max-width: 100%;
+    box-shadow: 0 24px 80px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.04);
+  }
+
+  .chrome {
+    background: var(--mantle);
+    padding: 10px 14px;
+    display: flex; align-items: center; gap: 7px;
+  }
+  .dot { width: 12px; height: 12px; border-radius: 50%; }
+  .dot-r { background: #ff5f57; }
+  .dot-y { background: #febc2e; }
+  .dot-g { background: #28c840; }
+  .chrome-t { flex:1; text-align:center; color:var(--overlay0); font-size:12px; }
+
+  .app { display: flex; height: 560px; }
+
+  /* ════════════════════ SIDEBAR ════════════════════ */
+  .sidebar {
+    width: 340px; min-width: 340px;
+    border-right: 1px solid var(--surface1);
+    display: flex; flex-direction: column;
+  }
+
+  .sb-hdr {
+    display: flex; align-items: center;
+    padding: 8px 12px; gap: 8px;
+    border-bottom: 1px solid var(--surface0);
+  }
+  .sb-hdr .logo { color: var(--teal); font-weight: 700; font-size: 14px; }
+  .sb-hdr .repo { color: var(--overlay0); font-size: 11px; margin-left: auto; }
+
+  /* Search/filter bar */
+  .sb-filter {
+    display: flex; align-items: center;
+    padding: 6px 12px; gap: 6px;
+    border-bottom: 1px solid var(--surface0);
+    font-size: 12px;
+  }
+  .sb-filter .icon { color: var(--surface2); }
+  .sb-filter .placeholder { color: var(--surface2); }
+
+  .sb-scroll { flex: 1; overflow-y: auto; padding: 2px 0; }
+
+  /* ── Section headers (collapsible) ── */
+  .sec {
+    display: flex; align-items: center;
+    padding: 6px 12px 3px;
+    gap: 5px;
+    font-size: 10px; font-weight: 700;
+    letter-spacing: 0.8px;
+    color: var(--surface2);
+    cursor: pointer;
+  }
+  .sec:hover { color: var(--overlay0); }
+  .sec .chevron {
+    font-size: 8px;
+    transition: transform 0.15s;
+    width: 1.2ch;
+    text-align: center;
+  }
+  .sec .chevron.collapsed { transform: rotate(-90deg); }
+  .sec .count {
+    background: var(--surface0);
+    padding: 0 5px;
+    border-radius: 3px;
+    font-size: 9px;
+    color: var(--overlay0);
+  }
+  .sec .status-color {
+    width: 4px; height: 4px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .sec::after {
+    content: ''; flex: 1; height: 1px;
+    background: var(--surface0);
+  }
+
+  /* ── Cards ── */
+  .card {
+    margin: 1px 6px;
+    padding: 5px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    border-left: 2px solid transparent;
+    transition: all 0.1s;
+    position: relative;
+  }
+  .card:hover { background: rgba(205,214,244,0.02); }
+  .card.active {
+    background: var(--surface0);
+    border-left-color: var(--teal);
+  }
+
+  .card-row1 {
+    display: flex; align-items: center;
+    gap: 6px; margin-bottom: 2px;
+  }
+  .card-icon { width: 1.5ch; text-align: center; flex-shrink: 0; font-size: 12px; }
+  .card-name {
+    font-size: 13px; color: var(--text); font-weight: 400;
+    flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .card.active .card-name { color: var(--teal); font-weight: 700; }
+
+  .card-badges {
+    display: flex; align-items: center; gap: 4px; flex-shrink: 0;
+  }
+  .pr-pill {
+    font-size: 10px; font-weight: 700;
+    padding: 0 5px; border-radius: 3px;
+    line-height: 1.6;
+  }
+
+  .card-row2 {
+    display: flex; align-items: center;
+    gap: 6px; padding-left: 2.1ch;
+    font-size: 10px; color: var(--surface2);
+  }
+  .card-commit {
+    flex: 1; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap;
+  }
+  .card-meta {
+    display: flex; align-items: center;
+    gap: 5px; flex-shrink: 0;
+  }
+
+  /* Dirty indicator dot */
+  .dirty-dot {
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--yellow);
+    flex-shrink: 0;
+  }
+
+  /* ── Sidebar footer ── */
+  .sb-foot {
+    border-top: 1px solid var(--surface0);
+    padding: 6px 12px;
+    display: flex; gap: 4px; align-items: center;
+  }
+  .sb-btn {
+    padding: 4px 10px; border-radius: 4px;
+    font-size: 11px; cursor: pointer;
+    background: var(--surface0); color: var(--subtext0);
+    border: 1px solid var(--surface1);
+    font-family: var(--mono);
+    transition: all 0.1s;
+  }
+  .sb-btn:hover { background: var(--surface1); color: var(--text); }
+  .sb-btn.primary {
+    background: var(--teal); color: var(--crust);
+    border-color: var(--teal); font-weight: 700;
+  }
+  .sb-btn.primary:hover { opacity: 0.9; }
+
+  .sb-btn .shortcut {
+    color: var(--crust);
+    opacity: 0.5;
+    font-size: 10px;
+    margin-left: 4px;
+  }
+  .sb-btn:not(.primary) .shortcut { color: var(--surface2); }
+
+  .sb-foot-spacer { flex: 1; }
+  .sb-foot-count { font-size: 10px; color: var(--surface2); }
+
+  /* ════════════════════ RIGHT PANE ════════════════════ */
+  .right {
+    flex: 1; display: flex; flex-direction: column; min-width: 0;
+  }
+
+  /* ── Detail bar (richer than a simple header) ── */
+  .detail-bar {
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--surface0);
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  .detail-row {
+    display: flex; align-items: center; gap: 1ch;
+    font-size: 12px; white-space: nowrap;
+  }
+  .detail-row .branch { color: var(--teal); font-weight: 700; }
+  .detail-row .path { color: var(--surface2); }
+  .detail-row .sep { color: var(--surface1); }
+  .detail-row .pr-state { font-weight: 700; }
+  .detail-row .pr-url { color: var(--surface2); font-size: 11px; }
+  .detail-row .sync { font-weight: 700; }
+  .detail-row .status-pill {
+    font-size: 9px; font-weight: 700;
+    padding: 1px 6px; border-radius: 3px;
+    letter-spacing: 0.3px;
+  }
+
+  /* ── Terminal ── */
+  .term {
+    flex: 1; padding: 0.2em 1ch;
+    overflow: hidden; line-height: 1.4;
+  }
+  .term .l { white-space: pre; height: var(--cell-h); }
+  .term .p { color: var(--green); font-weight: 700; }
+  .term .c { color: var(--text); }
+  .term .o { color: var(--subtext0); }
+  .term .k { color: var(--green); }
+  .term .h { color: var(--yellow); }
+  .term .j { color: var(--text); }
+
+  .bc {
+    display: inline-block; width: 1ch;
+    background: var(--text); color: var(--base);
+    animation: bk 1s step-end infinite;
+  }
+  @keyframes bk { 0%,49%{opacity:1} 50%,100%{opacity:0} }
+
+  @keyframes sp {
+    0%{content:"\2801"}10%{content:"\2809"}20%{content:"\2819"}30%{content:"\2838"}
+    40%{content:"\283C"}50%{content:"\2834"}60%{content:"\2826"}70%{content:"\2807"}
+    80%{content:"\280F"}90%{content:"\280B"}
+  }
+  .spn::before { content:"\280B"; animation:sp 0.8s steps(1) infinite; }
+
+  .sbar {
+    background: var(--surface0);
+    padding: 0 1ch;
+    line-height: var(--cell-h);
+    height: var(--cell-h);
+    white-space: nowrap; font-size: 12px;
+  }
+  .sbar .sk { color: var(--teal); font-weight: 700; }
+  .sbar .sv { color: var(--text); }
+  .sbar .ss { color: var(--overlay0); }
+</style>
+</head>
+<body>
+
+<div class="label">
+  <h2>Concept C v2: Collapsible Groups + Detail Bar</h2>
+  <p>Builds on the rich sidebar cards with <em>collapsible sections</em>, a <em>filter bar</em>,
+  <em>left border accent</em> on the active card, <em>dirty indicators</em>, <em>PR pills</em>,
+  and a two-row <em>detail bar</em> on the right that consolidates branch/PR/sync info.</p>
+</div>
+
+<div class="window">
+  <div class="chrome">
+    <div class="dot dot-r"></div>
+    <div class="dot dot-y"></div>
+    <div class="dot dot-g"></div>
+    <div class="chrome-t">arbor</div>
+  </div>
+  <div class="app">
+    <!-- ══ Sidebar ══ -->
+    <div class="sidebar">
+      <div class="sb-hdr">
+        <span class="logo">arbor</span>
+        <span class="repo">fusion-platform</span>
+      </div>
+
+      <div class="sb-filter">
+        <span class="icon">&#x2315;</span>
+        <span class="placeholder">Filter worktrees...</span>
+      </div>
+
+      <div class="sb-scroll">
+
+        <!-- IN PROGRESS -->
+        <div class="sec">
+          <span class="chevron">&#x25BC;</span>
+          <span class="status-color" style="background:var(--blue)"></span>
+          IN PROGRESS
+          <span class="count">3</span>
+        </div>
+
+        <div class="card">
+          <div class="card-row1">
+            <span class="card-icon" style="color:var(--surface2)">&middot;</span>
+            <span class="card-name">main</span>
+          </div>
+          <div class="card-row2">
+            <span class="card-commit">up to date with origin/main</span>
+          </div>
+        </div>
+
+        <div class="card active">
+          <div class="card-row1">
+            <span class="card-icon" style="color:var(--teal)"><span class="spn"></span></span>
+            <span class="card-name">agent-routing</span>
+            <div class="card-badges">
+              <span class="dirty-dot"></span>
+              <span class="pr-pill" style="background:rgba(166,227,161,0.15);color:var(--green)">#247</span>
+            </div>
+          </div>
+          <div class="card-row2">
+            <span class="card-commit">feat: add multi-agent routing with priority queues</span>
+            <div class="card-meta">
+              <span style="color:var(--teal)">&#x2191;3</span>
+              <span style="color:var(--yellow)">&#x2193;1</span>
+              <span>2h</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-row1">
+            <span class="card-icon" style="color:var(--surface2)">&middot;</span>
+            <span class="card-name">auth-refresh</span>
+            <div class="card-badges">
+              <span class="dirty-dot"></span>
+            </div>
+          </div>
+          <div class="card-row2">
+            <span class="card-commit">fix: handle token expiry edge case</span>
+            <div class="card-meta">
+              <span style="color:var(--teal)">&#x2191;1</span>
+              <span>5h</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- IN REVIEW -->
+        <div class="sec">
+          <span class="chevron">&#x25BC;</span>
+          <span class="status-color" style="background:var(--teal)"></span>
+          IN REVIEW
+          <span class="count">2</span>
+        </div>
+
+        <div class="card">
+          <div class="card-row1">
+            <span class="card-icon" style="color:var(--teal)">&#x25CB;</span>
+            <span class="card-name">sqs-batching</span>
+            <div class="card-badges">
+              <span class="pr-pill" style="background:rgba(166,227,161,0.15);color:var(--green)">#238</span>
+            </div>
+          </div>
+          <div class="card-row2">
+            <span class="card-commit">feat: add SQS batch send with DLQ routing</span>
+            <div class="card-meta">
+              <span style="color:var(--yellow)">&#x2193;2</span>
+              <span>1d</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-row1">
+            <span class="card-icon" style="color:var(--teal)">&#x25CB;</span>
+            <span class="card-name">dashboard-v2</span>
+            <div class="card-badges">
+              <span class="pr-pill" style="background:rgba(249,226,175,0.15);color:var(--yellow)">#241 Draft</span>
+            </div>
+          </div>
+          <div class="card-row2">
+            <span class="card-commit">feat: redesign agent management page</span>
+            <div class="card-meta">
+              <span style="color:var(--teal)">&#x2191;5</span>
+              <span>3d</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- QUEUED (collapsed) -->
+        <div class="sec">
+          <span class="chevron collapsed">&#x25BC;</span>
+          <span class="status-color" style="background:var(--surface2)"></span>
+          QUEUED
+          <span class="count">2</span>
+        </div>
+        <!-- cards hidden when collapsed -->
+
+        <!-- DONE (collapsed) -->
+        <div class="sec">
+          <span class="chevron collapsed">&#x25BC;</span>
+          <span class="status-color" style="background:var(--green)"></span>
+          DONE
+          <span class="count">1</span>
+        </div>
+
+      </div>
+
+      <div class="sb-foot">
+        <button class="sb-btn primary">+ New<span class="shortcut">n</span></button>
+        <button class="sb-btn">Archive<span class="shortcut">a</span></button>
+        <button class="sb-btn">Status<span class="shortcut">s</span></button>
+        <span class="sb-foot-spacer"></span>
+        <span class="sb-foot-count">8 worktrees</span>
+      </div>
+    </div>
+
+    <!-- ══ Right pane ══ -->
+    <div class="right">
+      <div class="detail-bar">
+        <div class="detail-row">
+          <span class="branch">&#x2387; feat/agent-routing</span>
+          <span class="sep">&#x2502;</span>
+          <span class="status-pill" style="background:rgba(137,180,250,0.15);color:var(--blue)">IN PROGRESS</span>
+          <span class="sep">&#x2502;</span>
+          <span class="pr-state" style="color:var(--green)">#247 Open</span>
+          <span class="sep">&#x2502;</span>
+          <span class="sync" style="color:var(--teal)">&#x2191;3</span>
+          <span class="sync" style="color:var(--yellow)">&#x2193;1</span>
+        </div>
+        <div class="detail-row">
+          <span class="path">~/.../fusion-platform-worktrees/feat/agent-routing</span>
+          <span class="sep">&#x2502;</span>
+          <span class="pr-url">github.com/enablis/fusion-platform/pull/247</span>
+        </div>
+      </div>
+
+      <div class="term">
+<div class="l"><span class="p">&#x276F;</span> <span class="c">git log --oneline -5</span></div>
+<div class="l"><span class="h">a1f3c2d</span> <span class="j">feat: add multi-agent routing with priority queues</span></div>
+<div class="l"><span class="h">8e2b1a9</span> <span class="j">fix: handle edge case in agent handoff timeout</span></div>
+<div class="l"><span class="h">c4d5e6f</span> <span class="j">refactor: extract routing logic into separate module</span></div>
+<div class="l"><span class="h">1b2c3d4</span> <span class="j">test: add integration tests for routing fallback</span></div>
+<div class="l"><span class="h">9f8e7d6</span> <span class="j">chore: update agent SDK to v2.3.1</span></div>
+<div class="l">&nbsp;</div>
+<div class="l"><span class="p">&#x276F;</span> <span class="c">cargo test agent_routing</span></div>
+<div class="l"><span class="o">   Compiling fusion-agents v0.4.0</span></div>
+<div class="l"><span class="o">    Finished `test` profile in 3.42s</span></div>
+<div class="l"><span class="o">     Running unittests src/lib.rs</span></div>
+<div class="l">&nbsp;</div>
+<div class="l"><span class="o">running 4 tests</span></div>
+<div class="l"><span class="o">test agent_routing::test_priority_queue ....... </span><span class="k">ok</span></div>
+<div class="l"><span class="o">test agent_routing::test_fallback_handler ..... </span><span class="k">ok</span></div>
+<div class="l"><span class="o">test agent_routing::test_timeout_handoff ...... </span><span class="k">ok</span></div>
+<div class="l"><span class="o">test agent_routing::test_multi_agent_dispatch . </span><span class="k">ok</span></div>
+<div class="l">&nbsp;</div>
+<div class="l"><span class="o">test result: </span><span class="k">ok</span><span class="o">. 4 passed; 0 failed; 0 ignored</span></div>
+<div class="l">&nbsp;</div>
+<div class="l"><span class="p">&#x276F;</span> <span class="bc"> </span></div>
+      </div>
+
+      <div class="sbar">
+        <span class="sk">Shift+&#x2190;</span><span class="sv"> sidebar</span>
+        <span class="ss"> &#x2502; </span>
+        <span class="sk">/</span><span class="sv"> filter</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

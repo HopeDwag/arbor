@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Arbor — Everforest Theme</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+
+  :root {
+    /* Everforest Dark Hard */
+    --bg:      #272e33;
+    --bg0:     #232a2e;
+    --bg1:     #2e383c;
+    --bg2:     #374145;
+    --bg3:     #414b50;
+    --bg4:     #495156;
+    --fg:      #d3c6aa;
+    --grey0:   #7a8478;
+    --grey1:   #859289;
+    --grey2:   #9da9a0;
+    --red:     #e67e80;
+    --orange:  #e69875;
+    --yellow:  #dbbc7f;
+    --green:   #a7c080;
+    --aqua:    #83c092;
+    --blue:    #7fbbb3;
+    --purple:  #d699b6;
+
+    --mono: 'JetBrains Mono', 'Menlo', 'Consolas', monospace;
+    --cell-h: 1.4em;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg0);
+    font-family: var(--mono);
+    font-size: 13px;
+    font-variant-numeric: tabular-nums lining-nums;
+    color: var(--fg);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+    padding: 32px 24px;
+    gap: 16px;
+    user-select: none;
+  }
+
+  .label { text-align: center; margin-bottom: 8px; }
+  .label h2 { font-size: 16px; color: var(--fg); margin-bottom: 4px; }
+  .label p { color: var(--grey1); font-size: 12px; line-height: 1.6; max-width: 680px; }
+  .label em { color: var(--green); font-style: normal; }
+
+  .window {
+    background: var(--bg);
+    border-radius: 10px;
+    overflow: hidden;
+    width: 1180px;
+    max-width: 100%;
+    box-shadow: 0 24px 80px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.03);
+  }
+
+  .chrome {
+    background: var(--bg0);
+    padding: 10px 14px;
+    display: flex; align-items: center; gap: 7px;
+  }
+  .dot { width: 12px; height: 12px; border-radius: 50%; }
+  .dot-r { background: var(--red); }
+  .dot-y { background: var(--yellow); }
+  .dot-g { background: var(--green); }
+  .chrome-t { flex:1; text-align:center; color:var(--grey0); font-size:12px; }
+
+  .app { display: flex; height: 580px; }
+
+  /* ════════════ SIDEBAR ════════════ */
+  .sidebar {
+    width: 310px; min-width: 310px;
+    border-right: 1px solid var(--bg2);
+    display: flex; flex-direction: column;
+  }
+
+  .sb-hdr {
+    display: flex; align-items: center;
+    padding: 10px 12px; gap: 8px;
+    border-bottom: 1px solid var(--bg2);
+  }
+  .sb-hdr .logo {
+    color: var(--green); font-weight: 700; font-size: 14px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .sb-hdr .logo .tree-icon { color: var(--aqua); font-size: 16px; }
+  .sb-hdr .repo { color: var(--grey0); font-size: 11px; margin-left: auto; }
+
+  .sb-scroll { flex: 1; overflow-y: auto; padding: 2px 0; }
+
+  /* ── Branch sections ── */
+  .sec {
+    display: flex; align-items: center;
+    padding: 8px 12px 4px; gap: 6px;
+    font-size: 10px; font-weight: 700;
+    letter-spacing: 0.8px; color: var(--grey0);
+  }
+  .sec .leaf { font-size: 11px; }
+  .sec .ct {
+    background: var(--bg1); padding: 0 5px;
+    border-radius: 3px; font-size: 9px; color: var(--grey1);
+  }
+  .sec::after { content:''; flex:1; height:1px; background:var(--bg2); }
+
+  /* ── Tree-branch cards ── */
+  .card {
+    margin: 0 6px; padding: 5px 8px 5px 16px;
+    cursor: pointer; position: relative;
+    border-radius: 4px; transition: background 0.1s;
+  }
+  .card:hover { background: rgba(211,198,170,0.03); }
+  .card.active { background: var(--bg1); }
+
+  /* Trunk line */
+  .card::before {
+    content: '';
+    position: absolute;
+    left: 8px; top: 0; bottom: 0;
+    width: 2px;
+    background: var(--bg2);
+  }
+  .sec + .card::before { top: 0; }
+  .card.active::before { background: var(--green); }
+
+  /* Branch fork */
+  .card::after {
+    content: '';
+    position: absolute;
+    left: 8px; top: 50%;
+    width: 6px; height: 2px;
+    background: var(--bg2);
+  }
+  .card.active::after { background: var(--green); }
+
+  /* Leaf node at end of branch */
+  .card-leaf {
+    position: absolute;
+    left: 12px; top: 50%;
+    transform: translateY(-50%);
+    font-size: 8px;
+    color: var(--bg3);
+  }
+  .card.active .card-leaf { color: var(--green); }
+  .card.done-c .card-leaf { color: var(--aqua); }
+  .card.review-c .card-leaf { color: var(--blue); }
+
+  .card-r1 {
+    display: flex; align-items: center;
+    gap: 6px; margin-bottom: 1px;
+    margin-left: 8px;
+  }
+  .card-name {
+    font-size: 13px; color: var(--fg);
+    flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .card.active .card-name { color: var(--green); font-weight: 700; }
+
+  .card-tags { display: flex; gap: 3px; flex-shrink: 0; }
+  .tag {
+    font-size: 9px; font-weight: 700;
+    padding: 0 4px; border-radius: 2px;
+    line-height: 1.6;
+  }
+
+  .card-r2 {
+    display: flex; align-items: center;
+    gap: 6px; margin-left: 8px;
+    font-size: 10px; color: var(--grey0);
+  }
+  .card-msg {
+    flex: 1; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap;
+  }
+  .card-stats { display: flex; gap: 4px; flex-shrink: 0; }
+
+  .grp-gap { height: 6px; }
+
+  /* Last card in group - cap the trunk */
+  .grp-last::before { bottom: 50%; }
+
+  /* ── Footer ── */
+  .sb-foot {
+    border-top: 1px solid var(--bg2);
+    padding: 6px 12px;
+    display: flex; gap: 4px; align-items: center;
+  }
+  .sb-btn {
+    padding: 4px 10px; border-radius: 4px;
+    font-size: 11px; cursor: pointer;
+    background: var(--bg1); color: var(--grey2);
+    border: 1px solid var(--bg2);
+    font-family: var(--mono); transition: all 0.1s;
+  }
+  .sb-btn:hover { background: var(--bg2); color: var(--fg); }
+  .sb-btn.primary {
+    background: var(--green); color: var(--bg0);
+    border-color: var(--green); font-weight: 700;
+  }
+  .sb-btn.primary:hover { opacity: 0.9; }
+  .sb-btn .sc { opacity: 0.5; font-size: 10px; margin-left: 3px; }
+  .sb-btn:not(.primary) .sc { color: var(--grey0); }
+  .sb-spacer { flex: 1; }
+  .sb-ct { font-size: 10px; color: var(--grey0); }
+
+  /* ════════════ RIGHT PANE ════════════ */
+  .right {
+    flex: 1; display: flex; flex-direction: column; min-width: 0;
+  }
+
+  .detail {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--bg2);
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .detail-top {
+    display: flex; align-items: center; gap: 8px;
+  }
+  .detail-branch { font-size: 14px; color: var(--green); font-weight: 700; }
+  .detail-pill {
+    font-size: 9px; font-weight: 700;
+    padding: 1px 6px; border-radius: 3px; letter-spacing: 0.3px;
+  }
+  .detail-pr { font-weight: 700; font-size: 12px; }
+  .detail-sync { font-size: 12px; font-weight: 700; }
+  .detail-bottom {
+    display: flex; align-items: center; gap: 1ch; font-size: 11px;
+  }
+  .detail-path { color: var(--grey0); }
+  .detail-sep { color: var(--bg3); }
+  .detail-url { color: var(--grey0); }
+
+  .term {
+    flex: 1; padding: 0.2em 1ch;
+    overflow: hidden; line-height: 1.4;
+  }
+  .term .l { white-space: pre; height: var(--cell-h); }
+  .term .p { color: var(--green); font-weight: 700; }
+  .term .c { color: var(--fg); }
+  .term .o { color: var(--grey1); }
+  .term .k { color: var(--green); }
+  .term .h { color: var(--yellow); }
+  .term .j { color: var(--fg); }
+
+  .bc {
+    display: inline-block; width: 1ch;
+    background: var(--fg); color: var(--bg);
+    animation: bk 1s step-end infinite;
+  }
+  @keyframes bk { 0%,49%{opacity:1} 50%,100%{opacity:0} }
+
+  @keyframes sp {
+    0%{content:"\2801"}10%{content:"\2809"}20%{content:"\2819"}30%{content:"\2838"}
+    40%{content:"\283C"}50%{content:"\2834"}60%{content:"\2826"}70%{content:"\2807"}
+    80%{content:"\280F"}90%{content:"\280B"}
+  }
+  .spn::before { content:"\280B"; animation:sp 0.8s steps(1) infinite; }
+
+  .sbar {
+    background: var(--bg1); padding: 0 1ch;
+    line-height: var(--cell-h); height: var(--cell-h);
+    white-space: nowrap; font-size: 12px;
+  }
+  .sbar .sk { color: var(--green); font-weight: 700; }
+  .sbar .sv { color: var(--fg); }
+  .sbar .ss { color: var(--grey0); }
+</style>
+</head>
+<body>
+
+<div class="label">
+  <h2>Everforest Theme &mdash; Branch &amp; Trunk</h2>
+  <p>Earthy <em>Everforest</em> palette. The sidebar trunk line forks into each worktree like literal branches.
+  Leaf nodes mark each card. Section headers use botanical icons.</p>
+</div>
+
+<div class="window">
+  <div class="chrome">
+    <div class="dot dot-r"></div>
+    <div class="dot dot-y"></div>
+    <div class="dot dot-g"></div>
+    <div class="chrome-t">arbor</div>
+  </div>
+  <div class="app">
+
+    <div class="sidebar">
+      <div class="sb-hdr">
+        <span class="logo"><span class="tree-icon">&#x1F332;</span> arbor</span>
+        <span class="repo">fusion-platform</span>
+      </div>
+      <div class="sb-scroll">
+
+        <!-- IN PROGRESS -->
+        <div class="sec">
+          <span class="leaf">&#x1F33F;</span>
+          GROWING
+          <span class="ct">3</span>
+        </div>
+
+        <div class="card">
+          <span class="card-leaf">&#x25CF;</span>
+          <div class="card-r1">
+            <span class="card-name">main</span>
+          </div>
+          <div class="card-r2">
+            <span class="card-msg">up to date with origin/main</span>
+          </div>
+        </div>
+
+        <div class="card active">
+          <span class="card-leaf">&#x25CF;</span>
+          <div class="card-r1">
+            <span class="card-name"><span style="color:var(--aqua)"><span class="spn"></span></span> agent-routing</span>
+            <div class="card-tags">
+              <span class="tag" style="background:rgba(219,188,127,0.12);color:var(--yellow)">M</span>
+              <span class="tag" style="background:rgba(167,192,128,0.12);color:var(--green)">#247</span>
+            </div>
+          </div>
+          <div class="card-r2">
+            <span class="card-msg">feat: add multi-agent routing with priority queues</span>
+            <div class="card-stats">
+              <span style="color:var(--aqua)">&#x2191;3</span>
+              <span style="color:var(--yellow)">&#x2193;1</span>
+              <span>2h</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card grp-last">
+          <span class="card-leaf">&#x25CF;</span>
+          <div class="card-r1">
+            <span class="card-name">auth-refresh</span>
+            <div class="card-tags">
+              <span class="tag" style="background:rgba(219,188,127,0.12);color:var(--yellow)">M</span>
+            </div>
+          </div>
+          <div class="card-r2">
+            <span class="card-msg">fix: handle token expiry edge case</span>
+            <div class="card-stats">
+              <span style="color:var(--aqua)">&#x2191;1</span>
+              <span>5h</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="grp-gap"></div>
+
+        <!-- IN REVIEW -->
+        <div class="sec">
+          <span class="leaf">&#x1F343;</span>
+          IN REVIEW
+          <span class="ct">2</span>
+        </div>
+
+        <div class="card review-c">
+          <span class="card-leaf">&#x25CF;</span>
+          <div class="card-r1">
+            <span class="card-name">sqs-batching</span>
+            <div class="card-tags">
+              <span class="tag" style="background:rgba(167,192,128,0.12);color:var(--green)">#238 Open</span>
+            </div>
+          </div>
+          <div class="card-r2">
+            <span class="card-msg">feat: add SQS batch send with DLQ routing</span>
+            <div class="card-stats">
+              <span style="color:var(--yellow)">&#x2193;2</span>
+              <span>1d</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card review-c grp-last">
+          <span class="card-leaf">&#x25CF;</span>
+          <div class="card-r1">
+            <span class="card-name">dashboard-v2</span>
+            <div class="card-tags">
+              <span class="tag" style="background:rgba(219,188,127,0.12);color:var(--yellow)">#241 Draft</span>
+            </div>
+          </div>
+          <div class="card-r2">
+            <span class="card-msg">feat: redesign agent management page</span>
+            <div class="card-stats">
+              <span style="color:var(--aqua)">&#x2191;5</span>
+              <span>3d</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="grp-gap"></div>
+
+        <!-- QUEUED -->
+        <div class="sec">
+          <span class="leaf">&#x1F331;</span>
+          SEEDLINGS
+          <span class="ct">2</span>
+        </div>
+
+        <div class="card">
+          <span class="card-leaf">&#x25CF;</span>
+          <div class="card-r1">
+            <span class="card-name" style="color:var(--grey1)">tf-upgrade</span>
+          </div>
+          <div class="card-r2">
+            <span class="card-msg">chore: upgrade terraform provider to v5</span>
+            <div class="card-stats"><span>5d</span></div>
+          </div>
+        </div>
+
+        <div class="card grp-last">
+          <span class="card-leaf">&#x25CF;</span>
+          <div class="card-r1">
+            <span class="card-name" style="color:var(--grey1)">audit-logging</span>
+          </div>
+          <div class="card-r2">
+            <span class="card-msg">initial worktree, no commits</span>
+            <div class="card-stats"><span>1w</span></div>
+          </div>
+        </div>
+
+        <div class="grp-gap"></div>
+
+        <!-- DONE -->
+        <div class="sec">
+          <span class="leaf">&#x1F342;</span>
+          HARVESTED
+          <span class="ct">1</span>
+        </div>
+
+        <div class="card done-c grp-last">
+          <span class="card-leaf">&#x25CF;</span>
+          <div class="card-r1">
+            <span class="card-name" style="color:var(--grey0)">cors-headers</span>
+            <div class="card-tags">
+              <span class="tag" style="background:rgba(214,153,182,0.12);color:var(--purple)">#220 Merged</span>
+            </div>
+          </div>
+          <div class="card-r2">
+            <span class="card-msg" style="color:var(--bg4)">fix: add CORS headers for dashboard origin</span>
+            <div class="card-stats" style="color:var(--bg4)"><span>2w</span></div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="sb-foot">
+        <button class="sb-btn primary">+ Grow<span class="sc">n</span></button>
+        <button class="sb-btn">Prune<span class="sc">a</span></button>
+        <button class="sb-btn">Status<span class="sc">s</span></button>
+        <span class="sb-spacer"></span>
+        <span class="sb-ct">8 branches</span>
+      </div>
+    </div>
+
+    <div class="right">
+      <div class="detail">
+        <div class="detail-top">
+          <span class="detail-branch">&#x2387; feat/agent-routing</span>
+          <span class="detail-pill" style="background:rgba(167,192,128,0.12);color:var(--green)">GROWING</span>
+          <span class="detail-pr" style="color:var(--green)">#247 Open</span>
+          <span class="detail-sync" style="color:var(--aqua)">&#x2191;3</span>
+          <span class="detail-sync" style="color:var(--yellow)">&#x2193;1</span>
+        </div>
+        <div class="detail-bottom">
+          <span class="detail-path">~/.../fusion-platform-worktrees/feat/agent-routing</span>
+          <span class="detail-sep">&#x2502;</span>
+          <span class="detail-url">github.com/enablis/fusion-platform/pull/247</span>
+        </div>
+      </div>
+
+      <div class="term">
+<div class="l"><span class="p">&#x276F;</span> <span class="c">git log --oneline -5</span></div>
+<div class="l"><span class="h">a1f3c2d</span> <span class="j">feat: add multi-agent routing with priority queues</span></div>
+<div class="l"><span class="h">8e2b1a9</span> <span class="j">fix: handle edge case in agent handoff timeout</span></div>
+<div class="l"><span class="h">c4d5e6f</span> <span class="j">refactor: extract routing logic into separate module</span></div>
+<div class="l"><span class="h">1b2c3d4</span> <span class="j">test: add integration tests for routing fallback</span></div>
+<div class="l"><span class="h">9f8e7d6</span> <span class="j">chore: update agent SDK to v2.3.1</span></div>
+<div class="l">&nbsp;</div>
+<div class="l"><span class="p">&#x276F;</span> <span class="c">cargo test agent_routing</span></div>
+<div class="l"><span class="o">   Compiling fusion-agents v0.4.0</span></div>
+<div class="l"><span class="o">    Finished `test` profile in 3.42s</span></div>
+<div class="l"><span class="o">     Running unittests src/lib.rs</span></div>
+<div class="l">&nbsp;</div>
+<div class="l"><span class="o">running 4 tests</span></div>
+<div class="l"><span class="o">test agent_routing::test_priority_queue ....... </span><span class="k">ok</span></div>
+<div class="l"><span class="o">test agent_routing::test_fallback_handler ..... </span><span class="k">ok</span></div>
+<div class="l"><span class="o">test agent_routing::test_timeout_handoff ...... </span><span class="k">ok</span></div>
+<div class="l"><span class="o">test agent_routing::test_multi_agent_dispatch . </span><span class="k">ok</span></div>
+<div class="l">&nbsp;</div>
+<div class="l"><span class="o">test result: </span><span class="k">ok</span><span class="o">. 4 passed; 0 failed; 0 ignored</span></div>
+<div class="l">&nbsp;</div>
+<div class="l"><span class="p">&#x276F;</span> <span class="bc"> </span></div>
+      </div>
+
+      <div class="sbar">
+        <span class="sk">Shift+&#x2190;</span><span class="sv"> sidebar</span>
+        <span class="ss"> &#x2502; </span>
+        <span class="sk">/</span><span class="sv"> filter</span>
+        <span class="ss"> &#x2502; </span>
+        <span class="sk">Ctrl+G</span><span class="sv"> open PR</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
