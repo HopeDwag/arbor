@@ -8,7 +8,7 @@ fn test_main_worktree_defaults_to_in_progress() {
     let app = arbor::app::App::new(dir.path()).unwrap();
     let wt = &app.sidebar_state.worktrees[0];
     assert!(wt.is_main);
-    assert_eq!(wt.workflow_status, WorkflowStatus::InProgress);
+    assert_eq!(wt.workflow_status, WorkflowStatus::Root);
 }
 
 #[test]
@@ -38,5 +38,5 @@ fn test_config_override_main_always_in_progress() {
     config.save(dir.path()).unwrap();
 
     let app = arbor::app::App::new(dir.path()).unwrap();
-    assert_eq!(app.sidebar_state.worktrees[0].workflow_status, WorkflowStatus::InProgress);
+    assert_eq!(app.sidebar_state.worktrees[0].workflow_status, WorkflowStatus::Root);
 }

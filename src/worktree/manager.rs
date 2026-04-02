@@ -95,7 +95,7 @@ impl WorktreeManager {
             path: self.repo_root.clone(),
             is_main: true,
             status: None,
-            workflow_status: WorkflowStatus::InProgress,
+            workflow_status: WorkflowStatus::Root,
             short_name: None,
             ahead: 0,
             behind: 0,

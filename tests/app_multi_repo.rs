@@ -44,7 +44,7 @@ fn test_multi_repo_mains_pinned_to_in_progress() {
     let app = arbor::app::App::new(parent.path()).unwrap();
     for wt in &app.sidebar_state.worktrees {
         if wt.is_main {
-            assert_eq!(wt.workflow_status, arbor::persistence::WorkflowStatus::InProgress);
+            assert_eq!(wt.workflow_status, arbor::persistence::WorkflowStatus::Root);
         }
     }
 }

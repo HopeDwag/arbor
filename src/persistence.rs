@@ -5,6 +5,7 @@ use std::path::Path;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum WorkflowStatus {
+    Root,
     #[default]
     Backlog,
     Queued,
@@ -17,6 +18,7 @@ impl WorkflowStatus {
     /// (caller should trigger archive). Skips InReview — that's auto from PR state.
     pub fn next(self) -> Option<Self> {
         match self {
+            Self::Root => Some(Self::Root), // root never cycles
             Self::Backlog => Some(Self::Queued),
             Self::Queued => Some(Self::InProgress),
             Self::InProgress => None, // signals "archive this"

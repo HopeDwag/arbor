@@ -75,6 +75,7 @@ pub fn render_control_panel(
         .as_millis() as u64;
 
     let groups: &[(WorkflowStatus, &str)] = &[
+        (WorkflowStatus::Root, "\u{1F332} ROOT"),
         (WorkflowStatus::InProgress, "\u{1F33F} IN PROGRESS"),
         (WorkflowStatus::InReview, "\u{1F343} IN REVIEW"),
         (WorkflowStatus::Queued, "\u{1F331} QUEUED"),
@@ -143,6 +144,7 @@ pub fn render_control_panel(
                 }
             } else {
                 match wt.workflow_status {
+                    WorkflowStatus::Root => Span::styled("\u{00B7} ", Style::default().fg(THEME.green)),
                     WorkflowStatus::Backlog => Span::styled("\u{25B6} ", Style::default().fg(THEME.bg4)),
                     WorkflowStatus::Queued => Span::styled("! ", Style::default().fg(THEME.yellow)),
                     WorkflowStatus::InReview => Span::styled("\u{e728} ", Style::default().fg(THEME.aqua)),

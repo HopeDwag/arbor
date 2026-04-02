@@ -162,7 +162,7 @@ impl App {
             // Apply config and PR auto-status
             for wt in &mut worktrees {
                 if wt.is_main {
-                    wt.workflow_status = WorkflowStatus::InProgress;
+                    wt.workflow_status = WorkflowStatus::Root;
                 } else if let Some(cfg) = config {
                     if let Some(wt_config) = cfg.worktrees.get(&wt.branch) {
                         wt.workflow_status = wt_config.status;
@@ -329,6 +329,7 @@ impl App {
                     ];
 
                     let status_label = match wt.workflow_status {
+                        WorkflowStatus::Root => "ROOT",
                         WorkflowStatus::Backlog => "BACKLOG",
                         WorkflowStatus::Queued => "QUEUED",
                         WorkflowStatus::InProgress => "IN PROGRESS",
@@ -967,7 +968,7 @@ impl App {
     fn apply_config(&mut self) {
         for wt in &mut self.sidebar_state.worktrees {
             if wt.is_main {
-                wt.workflow_status = WorkflowStatus::InProgress;
+                wt.workflow_status = WorkflowStatus::Root;
             } else if let Some(config) = self.configs.get(&wt.repo_root) {
                 if let Some(wt_config) = config.worktrees.get(&wt.branch) {
                     wt.workflow_status = wt_config.status;

@@ -46,6 +46,7 @@ fn test_default_status_is_backlog() {
 #[test]
 fn test_workflow_status_cycle() {
     use arbor::persistence::WorkflowStatus;
+    assert_eq!(WorkflowStatus::Root.next(), Some(WorkflowStatus::Root)); // root never cycles
     assert_eq!(WorkflowStatus::Backlog.next(), Some(WorkflowStatus::Queued));
     assert_eq!(WorkflowStatus::Queued.next(), Some(WorkflowStatus::InProgress));
     assert_eq!(WorkflowStatus::InProgress.next(), None); // signals archive

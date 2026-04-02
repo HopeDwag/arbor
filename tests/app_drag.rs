@@ -32,5 +32,5 @@ fn test_main_worktree_cannot_be_dragged() {
     app.handle_mouse(mouse_event(MouseEventKind::Drag(MouseButton::Left), 5, 8)).unwrap();
     app.handle_mouse(mouse_event(MouseEventKind::Up(MouseButton::Left), 5, 8)).unwrap();
 
-    assert_eq!(app.sidebar_state.worktrees[0].workflow_status, WorkflowStatus::InProgress);
+    assert_eq!(app.sidebar_state.worktrees[0].workflow_status, WorkflowStatus::Root);
 }
