@@ -1,6 +1,5 @@
 mod common;
 
-use arbor::keys::Focus;
 use arbor::persistence::WorkflowStatus;
 
 #[test]
