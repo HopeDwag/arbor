@@ -564,18 +564,10 @@ impl App {
         Line::from(spans)
     }
 
-    /// Enable/disable mouse capture based on focus.
-    /// Sidebar needs mouse for clicks/scroll. Terminal disables it for native text selection.
-    fn sync_mouse_capture(&self) {
-        use crossterm::event::{EnableMouseCapture, DisableMouseCapture};
-        match self.focus {
-            Focus::Sidebar => {
-                let _ = crossterm::execute!(std::io::stdout(), EnableMouseCapture);
-            }
-            Focus::Terminal => {
-                let _ = crossterm::execute!(std::io::stdout(), DisableMouseCapture);
-            }
-        }
+    /// Mouse capture is always enabled so sidebar clicks work from any focus.
+    /// Text selection in the terminal pane uses Shift+click (standard terminal convention).
+    pub fn mouse_capture_enabled(&self) -> bool {
+        true
     }
 
     pub fn handle_action(&mut self, action: Action) -> Result<()> {
@@ -585,16 +577,11 @@ impl App {
                     Focus::Sidebar => Focus::Terminal,
                     Focus::Terminal => Focus::Sidebar,
                 };
-                self.sync_mouse_capture();
             }
             Action::FocusSidebar => {
                 self.focus = Focus::Sidebar;
-                self.sync_mouse_capture();
             }
-            Action::FocusTerminal => {
-                self.focus = Focus::Terminal;
-                self.sync_mouse_capture();
-            }
+            Action::FocusTerminal => self.focus = Focus::Terminal,
             Action::SidebarUp => {
                 if self.sidebar_state.selected > 0 {
                     self.sidebar_state.selected -= 1;
@@ -611,7 +598,7 @@ impl App {
                     let size = crossterm::terminal::size()?;
                     self.ensure_pty_for_selected(size.1, size.0)?;
                     self.focus = Focus::Terminal;
-                    self.sync_mouse_capture();
+
                 }
             }
             Action::SidebarCreate => {
@@ -925,7 +912,7 @@ impl App {
             MouseEventKind::Down(_) => {
                 if mouse.column < self.sidebar_width {
                     self.focus = Focus::Sidebar;
-                    self.sync_mouse_capture();
+
                     // Look up which worktree was clicked via row_to_flat_idx
                     let row = mouse.row as usize;
                     let clicked_idx = if row < self.sidebar_state.row_to_flat_idx.len() {
@@ -950,7 +937,7 @@ impl App {
                     }
                 } else {
                     self.focus = Focus::Terminal;
-                    self.sync_mouse_capture();
+
                 }
             }
             MouseEventKind::Drag(_) => {
