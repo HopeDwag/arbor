@@ -75,7 +75,7 @@ pub fn render_control_panel(
         .as_millis() as u64;
 
     let groups: &[(WorkflowStatus, &str)] = &[
-        (WorkflowStatus::Root, "\u{1F332} ROOT"),
+        (WorkflowStatus::Root, "ROOT"),
         (WorkflowStatus::InProgress, "\u{1F33F} IN PROGRESS"),
         (WorkflowStatus::InReview, "\u{1F343} IN REVIEW"),
         (WorkflowStatus::Queued, "\u{1F331} QUEUED"),
