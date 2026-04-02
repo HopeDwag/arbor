@@ -15,6 +15,10 @@
 
 ---
 
+<p align="center">
+  <img src="docs/screenshot.svg" width="800" alt="arbor screenshot">
+</p>
+
 **arbor** is a TUI git worktree manager with an embedded terminal per branch. A split-pane interface with your worktree list on the left and a full shell session on the right. Create, switch, archive, and filter worktrees without ever leaving the terminal.
 
 Branches are the heart of how we work. Arbor treats them like living things.

@@ -1,0 +1,159 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 520" font-family="'JetBrains Mono','Menlo','Consolas',monospace" font-size="12">
+  <defs>
+    <style>
+      text { fill: #d3c6aa; }
+      .bg { fill: #272e33; }
+      .bg0 { fill: #232a2e; }
+      .bg1 { fill: #2e383c; }
+      .bg2 { fill: #374145; }
+      .bg3 { fill: #414b50; }
+      .green { fill: #a7c080; }
+      .aqua { fill: #83c092; }
+      .yellow { fill: #dbbc7f; }
+      .grey0 { fill: #7a8478; }
+      .grey1 { fill: #859289; }
+      .red { fill: #e67e80; }
+      .purple { fill: #d699b6; }
+      .fg { fill: #d3c6aa; }
+      .blue { fill: #7fbbb3; }
+    </style>
+  </defs>
+
+  <!-- Window -->
+  <rect width="920" height="520" rx="10" class="bg"/>
+
+  <!-- Title bar -->
+  <rect width="920" height="36" rx="10" class="bg0"/>
+  <rect y="26" width="920" height="10" class="bg0"/>
+  <circle cx="20" cy="18" r="6" fill="#e67e80"/>
+  <circle cx="40" cy="18" r="6" fill="#dbbc7f"/>
+  <circle cx="60" cy="18" r="6" fill="#a7c080"/>
+  <text x="460" y="22" text-anchor="middle" class="grey0" font-size="11">🌲 arbor</text>
+
+  <!-- Sidebar border -->
+  <rect x="0" y="36" width="260" height="448" class="bg"/>
+  <line x1="260" y1="36" x2="260" y2="484" stroke="#414b50" stroke-width="1"/>
+
+  <!-- Sidebar title -->
+  <text x="12" y="56" class="aqua" font-weight="bold" font-size="13">🌲 arbor</text>
+  <text x="200" y="56" class="grey0" font-size="10">fusion-platform</text>
+
+  <!-- ROOT section -->
+  <text x="12" y="80" class="grey0" font-weight="bold" font-size="10">ROOT  1</text>
+  <line x1="70" y1="77" x2="248" y2="77" stroke="#374145" stroke-width="1"/>
+
+  <!-- main (root) -->
+  <text x="16" y="96" class="green">└─●</text>
+  <text x="48" y="96" class="fg">· main</text>
+  <text x="168" y="96" class="grey0" font-size="10">initial commit</text>
+
+  <!-- IN PROGRESS section -->
+  <text x="12" y="122" class="grey0" font-weight="bold" font-size="10">🌳 IN PROGRESS  2</text>
+  <line x1="150" y1="119" x2="248" y2="119" stroke="#374145" stroke-width="1"/>
+
+  <!-- Selected card highlight -->
+  <rect x="4" y="128" width="252" height="30" rx="3" class="bg3"/>
+
+  <!-- agent-routing (selected, active) -->
+  <text x="16" y="140" class="green">├─●</text>
+  <text x="48" y="140" class="aqua" font-weight="bold">⠹ agent-routing</text>
+  <text x="194" y="140" class="yellow" font-size="10">M</text>
+  <text x="210" y="140" class="green" font-size="10">#247</text>
+  <text x="16" y="154" class="green">│</text>
+  <text x="48" y="154" class="grey0" font-size="10">feat: add multi-agent routing</text>
+
+  <!-- auth-refresh -->
+  <text x="16" y="172" class="bg2">└─</text><text x="34" y="172" class="bg3">●</text>
+  <text x="48" y="172" class="fg">· auth-refresh</text>
+  <text x="194" y="172" class="yellow" font-size="10">M</text>
+  <text x="48" y="186" class="grey0" font-size="10">fix: handle token expiry</text>
+  <text x="210" y="186" class="aqua" font-size="10">↑1</text>
+  <text x="232" y="186" class="grey0" font-size="10">5h</text>
+
+  <!-- IN REVIEW section -->
+  <text x="12" y="212" class="grey0" font-weight="bold" font-size="10">🪵 IN REVIEW  1</text>
+  <line x1="130" y1="209" x2="248" y2="209" stroke="#374145" stroke-width="1"/>
+
+  <!-- sqs-batching -->
+  <text x="16" y="228" class="bg2">└─</text><text x="34" y="228" class="blue">●</text>
+  <text x="48" y="228" class="fg">○ sqs-batching</text>
+  <text x="180" y="228" class="green" font-size="10">#238 Open</text>
+  <text x="48" y="242" class="grey0" font-size="10">feat: add SQS batch send</text>
+  <text x="210" y="242" class="yellow" font-size="10">↓2</text>
+  <text x="232" y="242" class="grey0" font-size="10">1d</text>
+
+  <!-- QUEUED section -->
+  <text x="12" y="268" class="grey0" font-weight="bold" font-size="10">🌱 QUEUED  1</text>
+  <line x1="110" y1="265" x2="248" y2="265" stroke="#374145" stroke-width="1"/>
+
+  <!-- tf-upgrade -->
+  <text x="16" y="284" class="bg2">└─</text><text x="34" y="284" class="yellow">●</text>
+  <text x="48" y="284" class="fg">! tf-upgrade</text>
+  <text x="48" y="298" class="grey0" font-size="10">chore: upgrade terraform</text>
+  <text x="232" y="298" class="grey0" font-size="10">5d</text>
+
+  <!-- BACKLOG section -->
+  <text x="12" y="324" class="grey0" font-weight="bold" font-size="10">🫘 BACKLOG  1</text>
+  <line x1="115" y1="321" x2="248" y2="321" stroke="#374145" stroke-width="1"/>
+
+  <!-- audit-logging -->
+  <text x="16" y="340" class="bg2">└─</text><text x="34" y="340" class="bg3">●</text>
+  <text x="48" y="340" class="grey1">▶ audit-logging</text>
+  <text x="48" y="354" class="grey0" font-size="10">initial worktree</text>
+  <text x="232" y="354" class="grey0" font-size="10">1w</text>
+
+  <!-- Footer -->
+  <rect x="1" y="454" width="258" height="16" class="bg2"/>
+  <text x="12" y="466" class="green" font-weight="bold" font-size="10">[+]New</text>
+  <text x="62" y="466" class="grey0" font-size="10">Archive</text>
+  <text x="200" y="466" class="grey0" font-size="10">🌲 6 worktrees</text>
+
+  <!-- Right pane: Detail bar -->
+  <rect x="261" y="36" width="659" height="32" class="bg"/>
+  <text x="272" y="52" class="aqua" font-weight="bold">⎇ feat/agent-routing</text>
+  <text x="440" y="52" class="grey0">IN PROGRESS</text>
+  <text x="540" y="52" class="green" font-weight="bold">#247 Open</text>
+  <text x="620" y="52" class="aqua">↑3</text>
+  <text x="645" y="52" class="yellow">↓1</text>
+  <text x="272" y="66" class="grey0" font-size="10">~/.../fusion-platform-worktrees/feat/agent-routing │ github.com/enablis/fusion-platform/pull/247</text>
+
+  <!-- Terminal area -->
+  <rect x="261" y="68" width="659" height="416" class="bg"/>
+
+  <!-- Terminal content -->
+  <text x="272" y="88" class="green" font-weight="bold">❯</text>
+  <text x="288" y="88" class="fg">git log --oneline -5</text>
+  <text x="272" y="104" class="yellow">a1f3c2d</text>
+  <text x="340" y="104" class="fg">feat: add multi-agent routing with priority queues</text>
+  <text x="272" y="120" class="yellow">8e2b1a9</text>
+  <text x="340" y="120" class="fg">fix: handle edge case in agent handoff timeout</text>
+  <text x="272" y="136" class="yellow">c4d5e6f</text>
+  <text x="340" y="136" class="fg">refactor: extract routing logic into separate module</text>
+  <text x="272" y="152" class="yellow">1b2c3d4</text>
+  <text x="340" y="152" class="fg">test: add integration tests for routing fallback</text>
+  <text x="272" y="168" class="yellow">9f8e7d6</text>
+  <text x="340" y="168" class="fg">chore: update agent SDK to v2.3.1</text>
+
+  <text x="272" y="192" class="green" font-weight="bold">❯</text>
+  <text x="288" y="192" class="fg">cargo test agent_routing</text>
+  <text x="272" y="208" class="grey1">   Compiling fusion-agents v0.4.0</text>
+  <text x="272" y="224" class="grey1">    Finished `test` profile in 3.42s</text>
+  <text x="272" y="240" class="grey1">     Running unittests src/lib.rs</text>
+
+  <text x="272" y="264" class="grey1">running 4 tests</text>
+  <text x="272" y="280" class="grey1">test agent_routing::test_priority_queue ....... </text><text x="630" y="280" class="green">ok</text>
+  <text x="272" y="296" class="grey1">test agent_routing::test_fallback_handler ..... </text><text x="630" y="296" class="green">ok</text>
+  <text x="272" y="312" class="grey1">test agent_routing::test_timeout_handoff ...... </text><text x="630" y="312" class="green">ok</text>
+  <text x="272" y="328" class="grey1">test agent_routing::test_multi_agent_dispatch . </text><text x="630" y="328" class="green">ok</text>
+
+  <text x="272" y="352" class="grey1">test result: </text><text x="370" y="352" class="green">ok</text><text x="390" y="352" class="grey1">. 4 passed; 0 failed; 0 ignored</text>
+
+  <text x="272" y="376" class="green" font-weight="bold">❯</text>
+  <rect x="288" y="365" width="8" height="14" class="fg" opacity="0.8"/>
+
+  <!-- Status bar -->
+  <rect x="0" y="484" width="920" height="36" rx="0" class="bg1"/>
+  <rect x="0" y="504" width="920" height="16" rx="10" class="bg1"/>
+  <text x="12" y="500" class="green" font-weight="bold" font-size="11">Shift+←</text>
+  <text x="72" y="500" font-size="11" class="fg">sidebar</text>
+</svg>
