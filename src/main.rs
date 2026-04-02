@@ -45,7 +45,6 @@ fn main() -> Result<()> {
 
     crossterm::execute!(
         std::io::stdout(),
-        crossterm::event::EnableMouseCapture,
         crossterm::event::EnableBracketedPaste,
         crossterm::cursor::SetCursorStyle::BlinkingBar,
     )?;
