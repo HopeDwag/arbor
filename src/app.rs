@@ -474,8 +474,8 @@ impl App {
                         if let Some(ref key) = self.active_worktree {
                             if let Some(pty) = self.pty_sessions.get(key) {
                                 let terminal_cols = cols.saturating_sub(self.sidebar_width);
-                                // Subtract 2 for status bar and header
-                                let terminal_rows = rows.saturating_sub(2);
+                                // Subtract 3 for detail bar (2 rows) + status bar (1 row)
+                                let terminal_rows = rows.saturating_sub(3);
                                 pty.resize(terminal_rows, terminal_cols)?;
                             }
                         }
@@ -1028,8 +1028,8 @@ impl App {
         if !self.pty_sessions.contains_key(&key) {
             let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
             let terminal_cols = cols.saturating_sub(self.sidebar_width);
-            // Subtract 2 for status bar and header
-            let terminal_rows = rows.saturating_sub(2);
+            // Subtract 3 for detail bar (2 rows) + status bar (1 row)
+            let terminal_rows = rows.saturating_sub(3);
             let session = PtySession::spawn(&shell, &[], terminal_rows, terminal_cols, &wt.path)?;
             self.pty_sessions.insert(key.clone(), session);
         }
