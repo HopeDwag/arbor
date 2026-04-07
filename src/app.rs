@@ -692,7 +692,10 @@ impl App {
                     let wt = &self.sidebar_state.worktrees[idx];
                     if let Some(cache) = self.github_caches.get(&wt.repo_root) {
                         if let Some(pr) = cache.get(&wt.branch) {
-                            let _ = std::process::Command::new("open")
+                            let opener = if cfg!(target_os = "macos") { "open" }
+                                else if cfg!(target_os = "windows") { "start" }
+                                else { "xdg-open" };
+                            let _ = std::process::Command::new(opener)
                                 .arg(&pr.url)
                                 .spawn();
                             self.flash(format!("Opened PR #{}", pr.number));
